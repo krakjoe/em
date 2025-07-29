@@ -35,7 +35,7 @@ jobs:
 
       - name: Test em (${{ matrix.php }})
         run: |
-          ./php-em-cli.js tests --verbose
+          ./php-em-test.js tests --verbose
 
       - name: Upload ${{ matrix.php }} artifacts
         uses: actions/upload-artifact@v4
