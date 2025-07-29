@@ -8,16 +8,8 @@ inputs:
   EM_PHP_DIR:
     description: 'Path to PHP source directory'
     required: true
-  EM_EXTRA_CONFIGURE:
+  EM_PHP_CONFIGURE:
     description: 'Extra configure arguments for PHP'
-    required: false
-    default: ''
-  EM_EXTRA_COMPILE:
-    description: 'Extra flags for emcc while compiling (may contain CFLAGS)'
-    required: false
-    default: ''
-  EM_EXTRA_LINK:
-    description: 'Extra flags for emcc while linking (may contain -s)'
     required: false
     default: ''
   with:
@@ -44,7 +36,7 @@ runs:
       uses: mymindstorm/setup-emsdk@v12
       with:
         version: ${{ inputs.emscripten-version }}
-    
+
     - name: Validate PHP directory
       shell: bash
       run: |
@@ -62,7 +54,7 @@ runs:
       run: |
         sudo apt install build-essential re2c bison autoconf
 
-    - name: Build PHP with Emscripten
+    - name: Build em
       id: build
       shell: bash
       run: |
@@ -74,24 +66,23 @@ runs:
             RECIPES="$RECIPES with-$RECIPE"
           done
         fi
-        
+
         # Build command
-        BUILD_CMD="make -f em.mk EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} $RECIPES all"
-        echo "Build command: $BUILD_CMD"
-        
-        # Execute build
-        $BUILD_CMD
-        
+        make -f em.mk \
+          EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} \
+          EM_PHP_CONFIGURE=${{ inputs.EM_PHP_CONFIGURE }} \
+            $RECIPES all
+
         # Set outputs
         echo "wasm-file=$(pwd)/php-em.wasm" >> $GITHUB_OUTPUT
         echo "js-file=$(pwd)/php-em.js" >> $GITHUB_OUTPUT
-        
+
         # Verify outputs exist
         if [ ! -f "php-em.wasm" ] || [ ! -f "php-em.js" ]; then
           echo "Error: Build completed but output files not found"
           exit 1
         fi
-        
+
         # Show file sizes
         echo "Build completed successfully:"
         ls -lash php-em.wasm php-em.js

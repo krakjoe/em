@@ -13,9 +13,10 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
-# Public, need to set this ...
+# Public, need to set dir, may want to set configure ...
 ########################################################################
-export EM_PHP_DIR  ?= 
+export EM_PHP_DIR       ?= 
+export EM_PHP_CONFIGURE ?=
 ########################################################################
 # Private, but probably not necessary to set in most cases
 ########################################################################
@@ -139,7 +140,7 @@ all: bin
 $(EM_PHP_DIR)/config.status: $(EM_EXTRA_RECIPE_TARGETS)
 	$(EM_PHP_DIR)/buildconf --force
 	@cd $(EM_PHP_DIR) && \
-		$(EMCONFIGURE) ./configure \
+		$(EMCONFIGURE) ./configure $(EM_PHP_CONFIGURE) \
 			--disable-all \
 			--disable-cgi \
 			--disable-cli \
@@ -250,6 +251,10 @@ debug:
 	@echo "EM_SRC_DIR:         $(EM_SRC_DIR)"
 	@echo "EM_PHP_DIR:         $(EM_PHP_DIR)"
 	@echo "EM_PHP_VERSION:     $(EM_PHP_VERSION)"
+ifneq ($(EM_PHP_CONFIGURE),)
+	@echo "EM_PHP_CONFIGURE:"
+	@echo "\t$(EM_PHP_CONFIGURE)"
+endif
 	@echo "EM_EXTRA_RECIPE_IN: $(EM_EXTRA_RECIPE_IN)"
 ifneq ($(EM_EXTRA_RECIPE_TARGETS),)
 	@echo "EM_EXTRA_RECIPE_TARGETS:"
