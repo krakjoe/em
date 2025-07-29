@@ -62,15 +62,16 @@ runs:
       shell: bash
       run: |
         # Convert recipes input to with-* targets
-        WITH_TARGETS=""
-        if [ -n "${{ inputs.with }}" ]; then
-          for recipe in ${{ inputs.with }}; do
-            WITH_TARGETS="$WITH_TARGETS with-$recipe"
+        WITH="${{ inputs.with }}"
+        RECIPES=""
+        if [ -n "$WITH" ]; then
+          for RECIPE in $WITH; do
+            RECIPES="$RECIPES with-$RECIPE"
           done
         fi
         
         # Build command
-        BUILD_CMD="make -f em.mk EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} $WITH_TARGETS all ${{ inputs.make-args }}"
+        BUILD_CMD="make -f em.mk EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} $RECIPES all"
         echo "Build command: $BUILD_CMD"
         
         # Execute build
