@@ -56,7 +56,11 @@ runs:
           echo "Error: '${{ inputs.EM_PHP_DIR }}' does not appear to be a PHP source directory"
           exit 1
         fi
-    
+
+    - name: Install PHP build Dependencies
+      run: |
+        sudo apt install build-essential re2c bison autoconf
+
     - name: Build PHP with Emscripten
       id: build
       shell: bash
