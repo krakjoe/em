@@ -58,6 +58,7 @@ runs:
         fi
 
     - name: Install PHP build Dependencies
+      shell: bash
       run: |
         sudo apt install build-essential re2c bison autoconf
 
