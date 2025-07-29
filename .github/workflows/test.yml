@@ -31,7 +31,7 @@ jobs:
           EM_PHP_DIR: ./php-src
           with: >
             ctype zlib bz2 sqlite3 pdo pdo-sqlite
-            phar mbstring calendar bcmath
+            phar mbstring calendar bcmath opcache
 
       - name: Test em (${{ matrix.php }})
         run: |
