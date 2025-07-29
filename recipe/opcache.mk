@@ -34,10 +34,10 @@ ifeq ($(call EM_PHP_VERSION_GE,80400),true)
 # Inject stub for build
 ########################################################################
 $(eval $(call \
-	EM_RECIPE_ADD_BUILD_STUB,\
+	EM_RECIPE_ADD_LINK_STUB,\
 		$(EM_EXTRA_RECIPE_STUBS)/shm.c))
 $(eval $(call \
-	EM_RECIPE_ADD_BUILD_STUB,\
+	EM_RECIPE_ADD_LINK_STUB,\
 		$(EM_EXTRA_RECIPE_STUBS)/initgroups.c))
 ########################################################################
 # Inject for em
