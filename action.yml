@@ -1,0 +1,91 @@
+name: 'em build'
+description: 'Compile PHP to WebAssembly using the em build system'
+branding:
+  icon: 'package'
+  color: 'blue'
+
+inputs:
+  EM_PHP_DIR:
+    description: 'Path to PHP source directory'
+    required: true
+  EM_EXTRA_CONFIGURE:
+    description: 'Extra configure arguments for PHP'
+    required: false
+    default: ''
+  EM_EXTRA_COMPILE:
+    description: 'Extra flags for emcc while compiling (may contain CFLAGS)'
+    required: false
+    default: ''
+  EM_EXTRA_LINK:
+    description: 'Extra flags for emcc while linking (may contain -s)'
+    required: false
+    default: ''
+  with:
+    description: 'Space-separated list of recipes to build (e.g. "ctype opcache pdo sqlite3")'
+    required: false
+    default: ''
+  emscripten-version:
+    description: 'emscripten version to use'
+    required: false
+    default: '4.0.11'
+
+outputs:
+  wasm-file:
+    description: 'Path to generated WASM file'
+    value: ${{ steps.build.outputs.wasm-file }}
+  js-file:
+    description: 'Path to generated JS file'
+    value: ${{ steps.build.outputs.js-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v12
+      with:
+        version: ${{ inputs.emscripten-version }}
+    
+    - name: Validate PHP directory
+      shell: bash
+      run: |
+        if [ ! -d "${{ inputs.EM_PHP_DIR }}" ]; then
+          echo "Error: PHP directory '${{ inputs.EM_PHP_DIR }}' does not exist"
+          exit 1
+        fi
+        if [ ! -f "${{ inputs.EM_PHP_DIR }}/configure.ac" ]; then
+          echo "Error: '${{ inputs.EM_PHP_DIR }}' does not appear to be a PHP source directory"
+          exit 1
+        fi
+    
+    - name: Build PHP with Emscripten
+      id: build
+      shell: bash
+      run: |
+        # Convert recipes input to with-* targets
+        WITH_TARGETS=""
+        if [ -n "${{ inputs.with }}" ]; then
+          for recipe in ${{ inputs.with }}; do
+            WITH_TARGETS="$WITH_TARGETS with-$recipe"
+          done
+        fi
+        
+        # Build command
+        BUILD_CMD="make -f em.mk EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} $WITH_TARGETS all ${{ inputs.make-args }}"
+        echo "Build command: $BUILD_CMD"
+        
+        # Execute build
+        $BUILD_CMD
+        
+        # Set outputs
+        echo "wasm-file=$(pwd)/php-em.wasm" >> $GITHUB_OUTPUT
+        echo "js-file=$(pwd)/php-em.js" >> $GITHUB_OUTPUT
+        
+        # Verify outputs exist
+        if [ ! -f "php-em.wasm" ] || [ ! -f "php-em.js" ]; then
+          echo "Error: Build completed but output files not found"
+          exit 1
+        fi
+        
+        # Show file sizes
+        echo "Build completed successfully:"
+        ls -lash php-em.wasm php-em.js

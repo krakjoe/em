@@ -1,0 +1,46 @@
+name: test em
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+ test-em:
+    runs-on: ubuntu-latest
+    name: Test EM
+    strategy:
+      matrix:
+        php: ["PHP-8.0", "PHP-8.1", "PHP-8.2", "PHP-8.3", "PHP-8.4"]
+    steps:
+      - name: Checkout em repository
+        uses: actions/checkout@v4
+        
+      - name: Checkout PHP ${{ matrix.php }}
+        uses: actions/checkout@v4
+        with:
+          repository: php/php-src
+          ref: ${{ matrix.php }}
+          path: php-src
+
+      - name: Build em (${{ matrix.php }})
+        uses: ./
+        with:
+          EM_PHP_DIR: ./php-src
+          with: >
+            ctype zlib bz2 sqlite3 pdo pdo-sqlite
+            phar mbstring calendar bcmath
+
+      - name: Test em (${{ matrix.php }})
+        run: |
+          ./php-em-cli.js tests --verbose
+
+      - name: Upload ${{ matrix.php }} artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-wasm-${{ matrix.php }}
+          path: |
+            php-em.js
+            php-em.wasm

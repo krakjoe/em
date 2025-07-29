@@ -1,0 +1,15 @@
+// Test JavaScript interface to em module
+assert(Module, "Module should be defined");
+assert(typeof Module.invoke === 'function', "Module.invoke should be a function");
+
+// Test basic PHP execution
+const result = Module.invoke('<?php echo "Hello from JS test"; ?>');
+assertEquals("Hello from JS test", result, "Basic PHP execution should work");
+
+// Test VFS from JavaScript
+const write = Module.invoke('<?php var_dump(file_put_contents("vfs://js_test.txt", "from JS")); ?>');
+assertContains("int(7)", write, "VFS should allow write from here");
+const content = Module.invoke('<?php echo file_get_contents("vfs://js_test.txt"); ?>');
+assertEquals("from JS", content, "VFS should work from JS test");
+
+console.log("JavaScript integration test passed");
