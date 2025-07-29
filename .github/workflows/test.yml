@@ -13,12 +13,12 @@ jobs:
     name: Test EM
     strategy:
       matrix:
-        php: ["PHP-8.0", "PHP-8.1", "PHP-8.2", "PHP-8.3", "PHP-8.4"]
+        php: ["PHP-8.0", "PHP-8.1", "PHP-8.2", "PHP-8.3", "PHP-8.4", "master"]
     steps:
-      - name: Checkout em repository
+      - name: Checkout em
         uses: actions/checkout@v4
         
-      - name: Checkout PHP ${{ matrix.php }}
+      - name: Checkout php-src (${{ matrix.php }})
         uses: actions/checkout@v4
         with:
           repository: php/php-src
@@ -37,10 +37,10 @@ jobs:
         run: |
           ./php-em-test.js tests --verbose
 
-      - name: Upload ${{ matrix.php }} artifacts
+      - name: Upload Artifacts (${{ matrix.php }})
         uses: actions/upload-artifact@v4
         with:
-          name: php-wasm-${{ matrix.php }}
+          name: ${{ matrix.php }}-em
           path: |
             php-em.js
             php-em.wasm
