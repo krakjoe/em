@@ -17,21 +17,10 @@
  */
 
 #include <php.h>
-
-#ifdef ZTS
-#include <TSRM.h>
-#endif
-
-#ifdef EMSCRIPTEN
-#include <emscripten.h>
-#else
-#define EMSCRIPTEN_KEEPALIVE
-#endif
-
-#include <SAPI.h>
-
 #include <php_main.h>
 #include <zend_exceptions.h>
+
+#include "http.h"
 
 static php_stream_wrapper em_http_wrapper;
 static php_stream_ops     em_http_ops;

@@ -22,29 +22,17 @@
 #include <TSRM.h>
 #endif
 
-#ifdef EMSCRIPTEN
-#include <emscripten.h>
-#else
-#define EMSCRIPTEN_KEEPALIVE
-#endif
-
 #include <SAPI.h>
 
 #include <php_main.h>
 #include <php_variables.h>
 #include <zend_exceptions.h>
 
+#include "vfs.h"
+#include "http.h"
+#include "api.h"
+
 extern sapi_module_struct em_sapi_module;
-
-extern void em_http_startup(void);
-extern void em_http_activate(void);
-extern void em_http_deactivate(void);
-extern void em_http_shutdown(void);
-
-extern void em_vfs_startup(void);
-extern void em_vfs_activate(void);
-extern void em_vfs_deactivate(void);
-extern void em_vfs_shutdown(void);
 
 static const char EM_INI[] =
     "allow_url_fopen=1\n"
@@ -277,7 +265,7 @@ static zend_always_inline void em_deactivate(void) {
 } /* }}} */
 
 /* {{{ exports */
-int em_startup(void) {
+int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 #ifdef ZTS
     php_tsrm_startup();
 #ifdef _WIN32
@@ -334,7 +322,7 @@ void EMSCRIPTEN_KEEPALIVE em_run_free(void) {
     em_clear(true);
 }
 
-void em_shutdown() {
+void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
     em_http_shutdown();
     em_vfs_shutdown();
 

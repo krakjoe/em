@@ -176,7 +176,22 @@ $(EM_SRC_DIR)/http.lo: $(EM_SRC_DIR)/http.c $(EM_PHP_DIR)/.libs/libphp.a
 		$(CC) $(EMCFLAGS) $(EM_EXTRA_COMPILE) \
 			-c $(EM_SRC_DIR)/http.c -o $(EM_SRC_DIR)/http.lo
 
-$(EM_SRC_DIR)/vfs.lo: $(EM_SRC_DIR)/vfs.c $(EM_PHP_DIR)/.libs/libphp.a
+$(EM_SRC_DIR)/node.lo: $(EM_SRC_DIR)/node.c $(EM_PHP_DIR)/.libs/libphp.a
+	$(LIBTOOL) --silent --mode=compile --tag=CC \
+		$(CC) $(EMCFLAGS) $(EM_EXTRA_COMPILE) \
+			-c $(EM_SRC_DIR)/node.c -o $(EM_SRC_DIR)/node.lo
+
+$(EM_SRC_DIR)/path.lo: $(EM_SRC_DIR)/path.c $(EM_PHP_DIR)/.libs/libphp.a
+	$(LIBTOOL) --silent --mode=compile --tag=CC \
+		$(CC) $(EMCFLAGS) $(EM_EXTRA_COMPILE) \
+			-c $(EM_SRC_DIR)/path.c -o $(EM_SRC_DIR)/path.lo
+
+$(EM_SRC_DIR)/dir.lo: $(EM_SRC_DIR)/dir.c $(EM_PHP_DIR)/.libs/libphp.a
+	$(LIBTOOL) --silent --mode=compile --tag=CC \
+		$(CC) $(EMCFLAGS) $(EM_EXTRA_COMPILE) \
+			-c $(EM_SRC_DIR)/dir.c -o $(EM_SRC_DIR)/dir.lo
+
+$(EM_SRC_DIR)/vfs.lo: $(EM_SRC_DIR)/vfs.c $(EM_SRC_DIR)/dir.lo $(EM_SRC_DIR)/node.lo $(EM_SRC_DIR)/path.lo $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
 		$(CC) $(EMCFLAGS) $(EM_EXTRA_COMPILE) \
 			-c $(EM_SRC_DIR)/vfs.c -o $(EM_SRC_DIR)/vfs.lo
@@ -201,6 +216,9 @@ bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_STUB_OBJECTS) $(EM_PHP_DIR)/.libs/lib
 		$(EM_PHP_DIR)/.libs/libphp.a \
 		$(EM_SRC_DIR)/stub.o \
 		$(EM_SRC_DIR)/http.o \
+		$(EM_SRC_DIR)/dir.o \
+		$(EM_SRC_DIR)/node.o \
+		$(EM_SRC_DIR)/path.o \
 		$(EM_SRC_DIR)/vfs.o \
 		$(EM_SRC_DIR)/api.o
 	@ls -lash $(EM_ROOT_DIR)/php-em.js $(EM_ROOT_DIR)/php-em.wasm

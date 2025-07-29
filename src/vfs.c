@@ -16,16 +16,12 @@
   +----------------------------------------------------------------------+
  */
 
+#include <emscripten.h>
+
 #include <php.h>
 
 #ifdef ZTS
 #include <TSRM.h>
-#endif
-
-#ifdef EMSCRIPTEN
-#include <emscripten.h>
-#else
-#define EMSCRIPTEN_KEEPALIVE
 #endif
 
 #include <SAPI.h>
@@ -34,10 +30,13 @@
 #include <zend_exceptions.h>
 #include <ext/standard/php_filestat.h>
 
+#include "node.h"
+#include "path.h"
+#include "dir.h"
+#include "vfs.h"
+
 static php_stream_wrapper em_vfs_wrapper;
 static php_stream_ops     em_vfs_ops;
-
-typedef struct _em_vfs_node_t em_vfs_node_t;
 
 typedef struct _em_vfs_abstract_t {
     char*               data;
@@ -47,163 +46,9 @@ typedef struct _em_vfs_abstract_t {
     em_vfs_node_t*      node;
 } em_vfs_abstract_t;
 
-typedef enum _em_vfs_node_kind_t {
-    EM_VFS_DIR,
-    EM_VFS_FILE,
-} em_vfs_node_kind_t;
-
-struct _em_vfs_node_t {
-    em_vfs_node_kind_t kind;
-    char* name; 
-
-    union {
-        struct {
-            char* content;
-            size_t size;
-            time_t created;
-            time_t modified;
-        } file;
-
-        struct {
-            HashTable children;    // name -> em_vfs_node_t*
-            time_t created;
-        } dir;
-    } data;
-
-    em_vfs_node_t* parent;
-};
-
-typedef struct _em_vfs_dir_abstract_t {
-    em_vfs_node_t* directory;
-    HashPosition   position;
-    bool           started;
-} em_vfs_dir_abstract_t;
-
 static em_vfs_node_t* em_vfs = NULL;
 
-typedef struct _em_vfs_path_t {
-    char* original;     // Full original path: "vfs://dir/file.txt"
-    char* directory;    // Directory part: "dir" or "" for root
-    char* filename;     // Filename part: "file.txt"
-    bool is_root;       // True if directory is root
-} em_vfs_path_t;
-
-static em_vfs_path_t* em_vfs_mkpath(const char* path) {
-    if (!path) {
-        return NULL;
-    }
-
-    em_vfs_path_t* vpath = pecalloc(1, sizeof(em_vfs_path_t), 1);
-
-    // Store original path
-    vpath->original = pestrdup(path, 1);
-
-    // Skip vfs:// prefix if present
-    const char* clean_path = path;
-    if (strncmp(path, "vfs://", 6) == 0) {
-        clean_path = path + 6;
-    }
-
-    // Handle empty path (root directory)
-    if (!clean_path || *clean_path == '\0') {
-        vpath->directory = pestrdup("", 1);
-        vpath->filename = pestrdup("", 1);
-        vpath->is_root = true;
-        return vpath;
-    }
-
-    // Find last slash
-    char* temp_path = estrdup(clean_path);
-    char* last_slash = strrchr(temp_path, '/');
-
-    if (last_slash) {
-        // Path has directory: "dir/file.txt"
-        *last_slash = '\0';
-        vpath->directory = pestrdup(temp_path, 1);
-        vpath->filename = pestrdup(last_slash + 1, 1);
-        vpath->is_root = (strlen(vpath->directory) == 0);
-    } else {
-        // Path is just filename: "file.txt"
-        vpath->directory = pestrdup("", 1);
-        vpath->filename = pestrdup(temp_path, 1);
-        vpath->is_root = true;
-    }
-
-    efree(temp_path);
-    return vpath;
-}
-
-static void em_vfs_path_release(em_vfs_path_t* vpath) {
-    if (!vpath) {
-        return;
-    }
-    
-    if (vpath->original) {
-        pefree(vpath->original, 1);
-    }
-    if (vpath->directory) {
-        pefree(vpath->directory, 1);
-    }
-    if (vpath->filename) {
-        pefree(vpath->filename, 1);
-    }
-    
-    pefree(vpath, 1);
-}
-
-static void em_vfs_node_release(em_vfs_node_t* node) {
-    if (node->name) {
-        pefree(node->name, 1);
-    }
-
-    if (node->kind == EM_VFS_FILE) {
-        if (node->data.file.content) {
-            pefree(node->data.file.content, 1);
-        }
-    } else if (node->kind == EM_VFS_DIR) {
-        zend_hash_destroy(&node->data.dir.children);
-    }
-
-    pefree(node, 1);
-}
-
-static void em_vfs_node_dtor(zval *zv) {
-    em_vfs_node_t* node =
-        (em_vfs_node_t*)Z_PTR_P(zv);
-    if (node) {
-        em_vfs_node_release(node);
-    }
-}
-
-static em_vfs_node_t* em_vfs_mkfile(em_vfs_node_t* parent, const char* name) {
-    em_vfs_node_t* file = pecalloc(1, sizeof(em_vfs_node_t), 1);
-    file->kind = EM_VFS_FILE;
-    file->name = pestrdup(name, 1);
-    file->parent = parent;
-    file->data.file.created = time(NULL);
-    file->data.file.modified = time(NULL);
-    zend_hash_str_add_ptr(
-        &parent->data.dir.children,
-        name, strlen(name), file);
-    return file;
-}
-
-static em_vfs_node_t* em_vfs_mkdir(em_vfs_node_t* parent, const char* name) {
-    em_vfs_node_t* dir = pecalloc(1, sizeof(em_vfs_node_t), 1);
-    dir->kind = EM_VFS_DIR;
-    dir->name = pestrdup(name, 1);
-    dir->parent = parent;
-    dir->data.dir.created = time(NULL);
-    zend_hash_init(
-        &dir->data.dir.children, 8, NULL,
-        em_vfs_node_dtor, 1);
-    zend_hash_str_add_ptr(
-        &parent->data.dir.children,
-        name, strlen(name), dir);    
-    return dir;
-}
-
-static em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
+em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
     if (!em_vfs) {
         return NULL;
     }
@@ -236,7 +81,7 @@ static em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
         if (child) {
             current = (em_vfs_node_t*)Z_PTR_P(child);
         } else if (make) {
-            current = em_vfs_mkdir(current, token);
+            current = em_vfs_node_mkdir(current, token);
         } else {
             current = NULL;
         }
@@ -248,34 +93,6 @@ static em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
     return current;
 }
 
-static zend_always_inline zend_result em_vfs_stat_node(em_vfs_node_t* node, php_stream_statbuf *ssb, bool link) {
-    memset(ssb, 0, sizeof(php_stream_statbuf));
-
-    if (!node) {
-        return FAILURE;
-    }
-
-    if (node->kind == EM_VFS_FILE) { // File
-        ssb->sb.st_size = node->data.file.size;
-        ssb->sb.st_mode = S_IFREG | 0644;
-        ssb->sb.st_mtime = node->data.file.modified;
-        ssb->sb.st_ctime = node->data.file.created;
-        ssb->sb.st_atime = node->data.file.modified;
-    } else {                         // Directory
-        ssb->sb.st_size = 0;
-        ssb->sb.st_mode = S_IFDIR | 0755;
-        ssb->sb.st_mtime = node->data.dir.created;
-        ssb->sb.st_ctime = node->data.dir.created;
-        ssb->sb.st_atime = node->data.dir.created;
-    }
-
-    ssb->sb.st_nlink = link;
-    ssb->sb.st_uid   = 0;
-    ssb->sb.st_gid   = 0;
-
-    return SUCCESS;
-}
-
 static zend_result em_vfs_stat(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bool link) {
     // If no filename specified, we're statting the directory itself
     if (!vpath->filename || strlen(vpath->filename) == 0) {
@@ -283,7 +100,7 @@ static zend_result em_vfs_stat(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bo
         if (!directory) {
             return FAILURE;
         }
-        return em_vfs_stat_node(directory, ssb, link);
+        return em_vfs_node_stat(directory, ssb, link);
     }
     
     // Look for file/subdirectory in parent directory
@@ -301,7 +118,7 @@ static zend_result em_vfs_stat(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bo
         return FAILURE;
     }
 
-    return em_vfs_stat_node(node, ssb, link);
+    return em_vfs_node_stat(node, ssb, link);
 }
 
 static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstract_t* abstract) {
@@ -335,7 +152,7 @@ static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstr
 
     if (strchr(mode, 'w')) {
         if (!node) {
-            node = em_vfs_mkfile(parent, vpath->filename);
+            node = em_vfs_node_mkfile(parent, vpath->filename);
         }
         if (!node) {
             return FAILURE;
@@ -492,7 +309,7 @@ static int em_vfs_stream_stat(php_stream *stream, php_stream_statbuf *ssb) {
         return FAILURE;
     }
 
-    return em_vfs_stat_node(abstract->node, ssb, 0);
+    return em_vfs_node_stat(abstract->node, ssb, 0);
 }
 
 static php_stream_ops em_vfs_ops = {
@@ -545,7 +362,7 @@ static int em_vfs_wrapper_stat_stream(
         return FAILURE;
     }
 
-    return em_vfs_stat_node(abstract->node, ssb, 1);
+    return em_vfs_node_stat(abstract->node, ssb, 1);
 }
 
 static int em_vfs_wrapper_stat_uri(
@@ -562,151 +379,6 @@ static int em_vfs_wrapper_stat_uri(
         em_vfs_stat(vpath, ssb, 1);
     em_vfs_path_release(vpath);
     return result;
-}
-
-static ssize_t em_vfs_dir_read(php_stream *stream, char *buffer, size_t count) {
-    em_vfs_dir_abstract_t* abstract =
-        (em_vfs_dir_abstract_t*)
-            stream->abstract;
-
-    if (!abstract->started) {
-        zend_hash_internal_pointer_reset_ex(
-            &abstract->directory->data.dir.children,
-            &abstract->position);
-        abstract->started = true;
-    }
-
-    zval *entry = NULL;
-    zend_string *key;
-    zend_ulong idx;
-
-    if ((entry = zend_hash_get_current_data_ex(
-            &abstract->directory->data.dir.children,
-                &abstract->position)) &&
-        (zend_hash_get_current_key_ex(
-            &abstract->directory->data.dir.children,
-                &key, &idx, &abstract->position) == HASH_KEY_IS_STRING)) {
-        php_stream_dirent dent;
-        em_vfs_node_t* node = Z_PTR_P(entry);
-
-        memcpy(
-            dent.d_name,
-            ZSTR_VAL(key),
-            ZSTR_LEN(key));
-        dent.d_name[ZSTR_LEN(key)]=0;
-#if PHP_VERSION_ID >= 80300
-        dent.d_type = (node->kind == EM_VFS_FILE) ?
-            DT_REG : DT_DIR;
-#endif
-        memcpy(buffer, &dent, sizeof(php_stream_dirent));
-
-        zend_hash_move_forward_ex(
-            &abstract->directory->data.dir.children,
-            &abstract->position);
-
-        return sizeof(php_stream_dirent);
-    }
-
-    return FAILURE;
-}
-
-static int em_vfs_dir_close(php_stream *stream, int type) {
-    em_vfs_dir_abstract_t* abstract =
-        (em_vfs_dir_abstract_t*)
-            stream->abstract;
-
-    if (abstract) {
-        pefree(abstract, 1);
-    }
-
-    return SUCCESS;
-}
-
-static int em_vfs_dir_rewind(php_stream* stream, zend_off_t offset, int whence, zend_off_t *position) {
-    (void) offset;
-    (void) whence;
-
-    em_vfs_dir_abstract_t* abstract =
-        (em_vfs_dir_abstract_t*)
-            stream->abstract;
-
-    if (!abstract) {
-        return FAILURE;
-    }
-
-    // Reset the hash table position to the beginning
-    zend_hash_internal_pointer_reset_ex(
-        &abstract->directory->data.dir.children,
-        &abstract->position);
-
-    // Mark as not started 
-    //  so next read will begin from start
-    abstract->started  = false;
-
-    // Set position to 0
-    if (position) {
-        *position = 0;
-    }
-    
-    return SUCCESS;
-}
-
-static php_stream_ops em_vfs_dir_ops = {
-    NULL,                // write
-    em_vfs_dir_read,     // read  
-    em_vfs_dir_close,    // close
-    NULL,                // flush
-    "em-vfs-dir",
-    em_vfs_dir_rewind,   // seek
-    NULL,                // cast
-    NULL,                // stat
-    NULL                 // set_option
-};
-
-static php_stream* em_vfs_wrapper_opendir(
-    php_stream_wrapper* wrapper,
-    const char* filename,
-    const char* mode,
-    int options,
-    zend_string **opened_path,
-    php_stream_context* context STREAMS_DC) {
-    
-    em_vfs_path_t* vpath = em_vfs_mkpath(filename);
-    if (!vpath) {
-        return NULL;
-    }
-    
-    em_vfs_node_t* directory = NULL;
-    
-    // If no filename part, we want the directory itself
-    if (!vpath->filename || strlen(vpath->filename) == 0) {
-        directory = em_vfs_resolve(vpath, false);
-    } else {
-        // We have a filename part - check if it's a directory in the parent
-        em_vfs_node_t* parent = em_vfs_resolve(vpath, false);
-        if (parent && parent->kind == EM_VFS_DIR) {
-            directory = (em_vfs_node_t*)zend_hash_str_find_ptr(
-                &parent->data.dir.children,
-                vpath->filename, strlen(vpath->filename));
-        }
-    }
-    
-    em_vfs_path_release(vpath);
-    
-    if (!directory || directory->kind != EM_VFS_DIR) {
-        return NULL;
-    }
-
-    em_vfs_dir_abstract_t* abstract = pecalloc(
-        1, sizeof(em_vfs_dir_abstract_t), 1);
-    abstract->directory = directory;
-    abstract->started = false;
-
-    if (opened_path) {
-        *opened_path = zend_string_init(filename, strlen(filename), 0);
-    }
-
-    return php_stream_alloc(&em_vfs_dir_ops, abstract, 0, mode);
 }
 
 static int em_vfs_wrapper_unlink(
