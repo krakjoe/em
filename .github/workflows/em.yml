@@ -1,0 +1,123 @@
+name: em
+
+on:
+  push:
+    branches: [ develop, release ]
+  pull_request:
+    branches: [ develop, release ]
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Test EM
+    strategy:
+      matrix:
+        php: ["PHP-8.0", "PHP-8.1", "PHP-8.2", "PHP-8.3", "PHP-8.4", "master"]
+    steps:
+      - name: Checkout em
+        uses: actions/checkout@v4
+        
+      - name: Checkout php-src (${{ matrix.php }})
+        uses: actions/checkout@v4
+        with:
+          repository: php/php-src
+          ref: ${{ matrix.php }}
+          path: php-src
+
+      - name: Build em (${{ matrix.php }})
+        uses: ./
+        with:
+          EM_PHP_DIR: ./php-src
+          with: >
+            ctype zlib bz2 sqlite3 pdo pdo-sqlite
+            phar mbstring calendar bcmath opcache
+
+      - name: Test em (${{ matrix.php }})
+        run: |
+          ./php-em-test.js tests --verbose
+
+      - name: Upload Artifacts (${{ matrix.php }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.php }}-em
+          path: |
+            php-em.js
+            php-em.wasm
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Organize build files
+        run: |
+          mkdir -p dist/latest
+          
+          # Process each PHP version
+          for version in "PHP-8.0" "PHP-8.1" "PHP-8.2" "PHP-8.3" "PHP-8.4" "master"; do
+            # Convert PHP-8.0 format to 8.0 format for URLs
+            if [ "$version" = "master" ]; then
+              clean_version="master"
+            else
+              clean_version=$(echo $version | sed 's/PHP-//')
+            fi
+            
+            echo "Processing $version -> $clean_version"
+            mkdir -p dist/latest/$clean_version
+            
+            # Copy artifacts if they exist
+            if [ -d "artifacts/${version}-em" ]; then
+              echo "Copying artifacts for $version"
+              cp artifacts/${version}-em/php-em.js dist/latest/$clean_version/
+              cp artifacts/${version}-em/php-em.wasm dist/latest/$clean_version/
+              ls -la dist/latest/$clean_version/
+            else
+              echo "Warning: No artifacts found for $version"
+            fi
+          done
+          
+          echo "Final directory structure:"
+          find dist -type f
+      
+      - name: Setup demo page
+        run: |
+          # The dist/index.html is already in the repo, no need to copy
+          echo "Using existing dist/index.html from repo"
+          ls -la dist/
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

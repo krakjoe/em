@@ -1,0 +1,732 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>em</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1e1e1e;
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #2d2d2d;
+            padding: 1rem;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #8892b0;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        select, button {
+            background: #404040;
+            color: white;
+            border: 1px solid #555;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        select:hover, button:hover {
+            background: #4a4a4a;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        .editor-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #404040;
+        }
+
+        .editor-header {
+            background: #2d2d2d;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .output-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .output-header {
+            background: #2d2d2d;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+
+        .CodeMirror {
+            flex: 1;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .output {
+            flex: 1;
+            background: #1a1a1a;
+            padding: 1rem;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            color: #e6e6e6;
+        }
+
+        .status {
+            background: #2d2d2d;
+            padding: 0.5rem 1rem;
+            border-top: 1px solid #404040;
+            font-size: 0.85rem;
+            color: #8892b0;
+        }
+
+        .loading {
+            color: #64ffda;
+        }
+
+        .error {
+            color: #ff6b6b;
+        }
+
+        .success {
+            color: #69db7c;
+        }
+
+        .demo-list {
+            margin-left: auto;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .editor-panel {
+                border-right: none;
+                border-bottom: 1px solid #404040;
+            }
+
+            .controls {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">em</div>
+        <div class="controls">
+            <select id="phpVersion">
+                <option value="8.0">PHP 8.0</option>
+                <option value="8.1">PHP 8.1</option>
+                <option value="8.2">PHP 8.2</option>
+                <option value="8.3">PHP 8.3</option>
+                <option value="8.4">PHP 8.4</option>
+                <option value="master">PHP master</option>
+            </select>
+            
+            <button id="runButton">Run Code</button>
+            <button id="clearOutput">Clear Output</button>
+            <button id="resetVFS">Reset VFS</button>
+            
+            <select id="demoSelect" class="demo-list">
+                <option value="">Load Demo...</option>
+                <option value="hello">Hello World</option>
+                <option value="vfs">Virtual File System</option>
+                <option value="http">HTTP Requests</option>
+                <option value="sqlite">SQLite Database</option>
+                <option value="oop">Object-Oriented PHP</option>
+                <option value="generators">Generators & Iterators</option>
+                <option value="match">Match Expression (8.0+)</option>
+                <option value="enums">Enums (8.1+)</option>
+                <option value="readonly">Readonly Properties (8.1+)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="editor-panel">
+            <div class="editor-header">
+                <span>PHP Code Editor</span>
+                <span id="editorStatus">Loading...</span>
+            </div>
+            <textarea id="codeEditor"></textarea>
+        </div>
+
+        <div class="output-panel">
+            <div class="output-header">
+                <span>Output</span>
+                <span id="outputStatus"></span>
+            </div>
+            <div id="output" class="output">Loading PHP runtime...</div>
+        </div>
+    </div>
+
+    <div class="status" id="statusBar">
+        Loading...
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/php/php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+
+    <script>
+        // Get PHP version from URL or default to 8.3
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentPHPVersion = urlParams.get('php') || '8.3';
+        
+        // Initialize CodeMirror
+        let editor;
+        
+        // Global state - declare Module properly  
+        //let Module = null;
+        let isReady = false;
+
+        // DOM elements
+        const phpVersionSelect = document.getElementById('phpVersion');
+        const runButton = document.getElementById('runButton');
+        const clearOutputButton = document.getElementById('clearOutput');
+        const resetVFSButton = document.getElementById('resetVFS');
+        const demoSelect = document.getElementById('demoSelect');
+        const output = document.getElementById('output');
+        const statusBar = document.getElementById('statusBar');
+        const editorStatus = document.getElementById('editorStatus');
+        const outputStatus = document.getElementById('outputStatus');
+
+        // Demo code snippets
+        const demos = {
+            hello: `<?php
+echo "Hello World from PHP " . phpversion() . "!\\n";
+echo "Current time: " . date('Y-m-d H:i:s') . "\\n";
+
+for ($i = 1; $i <= 5; $i++) {
+    echo "Count: $i\\n";
+}
+?>`,
+            
+            vfs: `<?php
+// Virtual File System Demo
+echo "=== VFS Demo ===\\n";
+
+// Create some files
+file_put_contents("vfs://readme.txt", "Welcome to em VFS!");
+file_put_contents("vfs://data.json", '{"name": "em", "type": "php-wasm"}');
+
+// Create a directory structure
+file_put_contents("vfs://dir/subfile.txt", "Nested file content");
+
+// List root directory
+echo "Root directory contents:\\n";
+foreach (scandir("vfs://") as $item) {
+    if ($item !== '.' && $item !== '..') {
+        echo "- $item\\n";
+    }
+}
+
+// Read files back
+echo "\\nFile contents:\\n";
+echo "readme.txt: " . file_get_contents("vfs://readme.txt") . "\\n";
+echo "data.json: " . file_get_contents("vfs://data.json") . "\\n";
+
+// Check file stats
+$stat = stat("vfs://readme.txt");
+echo "\\nreadme.txt size: " . $stat['size'] . " bytes\\n";
+?>`,
+
+            http: `<?php
+// HTTP Request Demo
+echo "=== HTTP Demo ===\\n";
+
+try {
+    echo "Fetching data from httpbin.org...\\n";
+    $data = file_get_contents("https://httpbin.org/json");
+    $json = json_decode($data, true);
+    
+    echo "Response received!\\n";
+    echo "Slideshow title: " . $json['slideshow']['title'] . "\\n";
+    echo "Author: " . $json['slideshow']['author'] . "\\n";
+    
+} catch (Exception $e) {
+    echo "HTTP request failed: " . $e->getMessage() . "\\n";
+    echo "Note: HTTP requests require CORS-enabled endpoints\\n";
+}
+?>`,
+
+            sqlite: `<?php
+// SQLite Demo
+echo "=== SQLite Demo ===\\n";
+
+try {
+    // Create in-memory database
+    $pdo = new PDO('sqlite::memory:');
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // Create table
+    $pdo->exec("CREATE TABLE users (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE
+    )");
+    
+    // Insert data
+    $stmt = $pdo->prepare("INSERT INTO users (name, email) VALUES (?, ?)");
+    $stmt->execute(['John Doe', 'john@example.com']);
+    $stmt->execute(['Jane Smith', 'jane@example.com']);
+    
+    // Query data
+    $stmt = $pdo->query("SELECT * FROM users");
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        echo "User: {$row['name']} ({$row['email']})\\n";
+    }
+    
+    echo "SQLite working perfectly!\\n";
+    
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage() . "\\n";
+}
+?>`,
+
+            oop: `<?php
+// Object-Oriented PHP Demo
+echo "=== OOP Demo ===\\n";
+
+class Animal {
+    protected $name;
+    
+    public function __construct($name) {
+        $this->name = $name;
+    }
+    
+    public function speak() {
+        return "Some sound";
+    }
+    
+    public function getName() {
+        return $this->name;
+    }
+}
+
+class Dog extends Animal {
+    public function speak() {
+        return "Woof!";
+    }
+}
+
+class Cat extends Animal {
+    public function speak() {
+        return "Meow!";
+    }
+}
+
+$animals = [
+    new Dog("Buddy"),
+    new Cat("Whiskers"),
+    new Dog("Rex")
+];
+
+foreach ($animals as $animal) {
+    echo $animal->getName() . " says: " . $animal->speak() . "\\n";
+}
+
+// Traits example
+trait Loggable {
+    public function log($message) {
+        echo "[LOG] $message\\n";
+    }
+}
+
+class Service {
+    use Loggable;
+    
+    public function doWork() {
+        $this->log("Work started");
+        $this->log("Work completed");
+    }
+}
+
+$service = new Service();
+$service->doWork();
+?>`,
+
+            generators: `<?php
+// Generators and Iterators Demo
+echo "=== Generators Demo ===\\n";
+
+function fibonacci($max) {
+    $a = 0;
+    $b = 1;
+    
+    yield $a;
+    yield $b;
+    
+    while ($a + $b <= $max) {
+        $c = $a + $b;
+        yield $c;
+        $a = $b;
+        $b = $c;
+    }
+}
+
+echo "Fibonacci sequence up to 100:\\n";
+foreach (fibonacci(100) as $num) {
+    echo "$num ";
+}
+echo "\\n\\n";
+
+// Generator with send()
+function counter() {
+    $value = 0;
+    while (true) {
+        $increment = yield $value;
+        $value += $increment ?: 1;
+    }
+}
+
+echo "Counter generator:\\n";
+$gen = counter();
+echo "Start: " . $gen->current() . "\\n";
+$gen->next();
+echo "Next: " . $gen->current() . "\\n";
+$gen->send(5);
+echo "After send(5): " . $gen->current() . "\\n";
+?>`,
+
+            match: `<?php
+// Match Expression Demo (PHP 8.0+)
+echo "=== Match Expression Demo ===\\n";
+
+function getGrade($score) {
+    return match(true) {
+        $score >= 90 => 'A',
+        $score >= 80 => 'B', 
+        $score >= 70 => 'C',
+        $score >= 60 => 'D',
+        default => 'F'
+    };
+}
+
+$scores = [95, 87, 72, 55, 91];
+foreach ($scores as $score) {
+    echo "Score $score: Grade " . getGrade($score) . "\\n";
+}
+
+// Match with exact values
+function processStatus($status) {
+    return match($status) {
+        'pending' => 'Waiting for approval',
+        'approved' => 'Ready to proceed',
+        'rejected' => 'Request denied',
+        'cancelled' => 'Operation cancelled',
+        default => 'Unknown status'
+    };
+}
+
+echo "\\nStatus processing:\\n";
+$statuses = ['pending', 'approved', 'unknown'];
+foreach ($statuses as $status) {
+    echo "$status: " . processStatus($status) . "\\n";
+}
+?>`,
+
+            enums: `<?php
+// Enums Demo (PHP 8.1+)
+echo "=== Enums Demo ===\\n";
+
+enum Status {
+    case PENDING;
+    case APPROVED;
+    case REJECTED;
+}
+
+enum Priority: int {
+    case LOW = 1;
+    case MEDIUM = 2;
+    case HIGH = 3;
+    
+    public function getLabel(): string {
+        return match($this) {
+            Priority::LOW => 'Low Priority',
+            Priority::MEDIUM => 'Medium Priority', 
+            Priority::HIGH => 'High Priority',
+        };
+    }
+}
+
+// Using simple enum
+$status = Status::PENDING;
+echo "Current status: " . $status->name . "\\n";
+
+// Using backed enum
+$priority = Priority::HIGH;
+echo "Priority: " . $priority->getLabel() . " (value: " . $priority->value . ")\\n";
+
+// Enum in match expression
+function getStatusMessage(Status $status): string {
+    return match($status) {
+        Status::PENDING => 'Please wait for review',
+        Status::APPROVED => 'You may proceed',
+        Status::REJECTED => 'Request was denied',
+    };
+}
+
+echo "Message: " . getStatusMessage(Status::APPROVED) . "\\n";
+
+// All enum cases
+echo "\\nAll statuses:\\n";
+foreach (Status::cases() as $case) {
+    echo "- " . $case->name . "\\n";
+}
+?>`,
+
+            readonly: `<?php
+// Readonly Properties Demo (PHP 8.1+)
+echo "=== Readonly Properties Demo ===\\n";
+
+class User {
+    public function __construct(
+        public readonly string $id,
+        public readonly string $name,
+        public readonly string $email,
+        private string $password
+    ) {}
+    
+    public function getInfo(): string {
+        return "User: {$this->name} ({$this->email})";
+    }
+    
+    // This would fail - can't modify readonly property
+    // public function changeName($newName) {
+    //     $this->name = $newName; // Error!
+    // }
+}
+
+$user = new User(
+    id: 'user_123',
+    name: 'John Doe', 
+    email: 'john@example.com',
+    password: 'secret'
+);
+
+echo $user->getInfo() . "\\n";
+echo "User ID: " . $user->id . "\\n";
+
+// Readonly class (PHP 8.2+)
+readonly class Point {
+    public function __construct(
+        public float $x,
+        public float $y
+    ) {}
+    
+    public function distance(): float {
+        return sqrt($this->x ** 2 + $this->y ** 2);
+    }
+}
+
+$point = new Point(3.0, 4.0);
+echo "Point distance from origin: " . $point->distance() . "\\n";
+echo "Coordinates: ({$point->x}, {$point->y})\\n";
+?>`
+        };
+
+        // Set up event handlers
+        function initializeEventHandlers() {
+            phpVersionSelect.value = currentPHPVersion;
+            phpVersionSelect.addEventListener('change', switchPHPVersion);
+            runButton.addEventListener('click', runCode);
+            clearOutputButton.addEventListener('click', clearOutput);
+            resetVFSButton.addEventListener('click', resetVFS);
+            demoSelect.addEventListener('change', loadDemo);
+        }
+
+        // Switch PHP version by reloading page
+        function switchPHPVersion() {
+            const newVersion = phpVersionSelect.value;
+            if (newVersion !== currentPHPVersion) {
+                const url = new URL(window.location);
+                url.searchParams.set('php', newVersion);
+                
+                // Preserve current code in sessionStorage
+                if (editor) {
+                    sessionStorage.setItem('em-demo-code', editor.getValue());
+                }
+                
+                window.location = url;
+            }
+        }
+
+        // Load demo
+        function loadDemo() {
+            const selectedDemo = demoSelect.value;
+            if (selectedDemo && demos[selectedDemo]) {
+                editor.setValue(demos[selectedDemo]);
+                demoSelect.value = ''; // Reset selection
+            }
+        }
+
+        // Clear output
+        function clearOutput() {
+            output.textContent = '';
+            outputStatus.textContent = '';
+        }
+
+        // Reset VFS
+        function resetVFS() {
+            if (Module && Module.vfs) {
+                Module.vfs.reset();
+                updateStatus('VFS reset successfully', 'success');
+            }
+        }
+
+        // Update status
+        function updateStatus(message, type = '') {
+            statusBar.textContent = message;
+            statusBar.className = 'status ' + type;
+        }
+
+        // Run PHP code
+        function runCode() {
+            if (!isReady || !Module) {
+                updateStatus('PHP runtime not ready', 'error');
+                return;
+            }
+            
+            const code = editor.getValue().trim();
+            if (!code) {
+                updateStatus('No code to run', 'error');
+                return;
+            }
+            
+            runButton.disabled = true;
+            updateStatus('Running code...', 'loading');
+            outputStatus.textContent = 'Running...';
+            
+            try {
+                const result = Module.invoke(code);
+                output.textContent = result;
+                updateStatus('Code executed successfully', 'success');
+                outputStatus.textContent = 'Complete';
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+                updateStatus('Execution failed', 'error');
+                outputStatus.textContent = 'Error';
+                console.error('Execution error:', error);
+            } finally {
+                runButton.disabled = false;
+            }
+        }
+
+        // Initialize CodeMirror
+        function initializeEditor() {
+            editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
+                mode: 'application/x-httpd-php',
+                theme: 'monokai',
+                lineNumbers: true,
+                indentUnit: 4,
+                indentWithTabs: false,
+                lineWrapping: true,
+                extraKeys: {
+                    'Ctrl-Enter': runCode,
+                    'Cmd-Enter': runCode
+                }
+            });
+
+            // Restore code from sessionStorage if available
+            const savedCode = sessionStorage.getItem('em-demo-code');
+            if (savedCode) {
+                editor.setValue(savedCode);
+                sessionStorage.removeItem('em-demo-code');
+            } else {
+                // Default demo code
+                editor.setValue(demos.hello);
+            }
+        }
+
+        // Load PHP runtime
+        function loadPHPRuntime() {
+            updateStatus(`Loading PHP ${currentPHPVersion}...`, 'loading');
+            editorStatus.textContent = 'Loading...';
+            
+            const script = document.createElement('script');
+            script.src = `./latest/${currentPHPVersion}/php-em.js`;
+            
+            script.onload = () => {
+                // Wait for Module to be ready
+                const checkReady = () => {
+                    if (typeof Module !== 'undefined' && Module && Module.ready) {
+                        isReady = true;
+                        updateStatus(`PHP ${currentPHPVersion} ready - Press Ctrl+Enter to run code`, 'success');
+                        editorStatus.textContent = `PHP ${currentPHPVersion}`;
+                        runButton.disabled = false;
+                        output.textContent = 'Ready! Click "Run Code" or press Ctrl+Enter to execute PHP code.';
+                    } else {
+                        setTimeout(checkReady, 100);
+                    }
+                };
+                checkReady();
+            };
+            
+            script.onerror = () => {
+                updateStatus(`Failed to load PHP ${currentPHPVersion}`, 'error');
+                editorStatus.textContent = 'Error';
+                output.textContent = `Failed to load PHP ${currentPHPVersion}. Make sure the files are available at ./latest/${currentPHPVersion}/php-em.js`;
+            };
+            
+            document.head.appendChild(script);
+        }
+
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeEditor();
+            initializeEventHandlers();
+            loadPHPRuntime();
+        });
+    </script>
+</body>
+</html>
