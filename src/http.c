@@ -56,15 +56,20 @@ EM_JS(ssize_t, em_http_fetch, (const char* url, uintptr_t abstract), {
 
     try {
         xhr.open('GET', url_str, false);
+        // x-user-defined is mysterious:
+        // this tells javascript not to mess with the stream essentially
+        xhr.overrideMimeType('text/plain; charset=x-user-defined');
         xhr.send();
 
         if (xhr.status >= 200 && xhr.status < 300) {
             var response = xhr.responseText;
-            
-            var length = Module.iou.getByteLength(response);
-            var buffer = Module._em_http_buffer(abstract, length);
+            var length   = response.length;
+            var buffer   = Module._em_http_buffer(abstract, length);
 
-            length = Module.iou.toBytes(response, buffer);
+            for (var i = 0; i < length; i++) {
+                Module.HEAPU8[buffer + i] =
+                    response.charCodeAt(i) & 0xFF;
+            }
 
             if (Module.dispatchEvent) {
                 Module.dispatchEvent(new CustomEvent('io.end', { 

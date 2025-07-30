@@ -116,12 +116,12 @@ $(EM_SRC_DIR)/stub.lo: $(EM_SRC_DIR)/stub.c $(EM_PHP_DIR)/config.status
 
 $(EM_RECIPE_BUILD_OBJECTS): %.lo: %.c $(EM_PHP_DIR)/config.status
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 $(EM_RECIPE_LINK_OBJECTS): %.lo: %.c $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 $(EM_PHP_DIR)/.libs/libphp.a.stamp: $(EM_SRC_DIR)/stub.lo $(EM_RECIPE_BUILD_OBJECTS)
@@ -172,7 +172,7 @@ bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
 		-s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","UTF8ToString","stringToUTF8", "lengthBytesUTF8", "HEAPU8"]' \
 		-s ALLOW_MEMORY_GROWTH=1 \
 		-s INITIAL_MEMORY=128MB \
-		-s WASM=1 $(EM_EMSDK_LDFLAGS) $(EM_RECIPE_LIBS) \
+		-s WASM=1 $(EM_EMSDK_LDFLAGS) $(EM_RECIPE_LDFLAGS) $(EM_RECIPE_LIBS) \
 		$(EM_PHP_DIR)/.libs/libphp.a \
 		$(EM_SRC_DIR)/stub.o \
 		$(EM_SRC_DIR)/http.o \

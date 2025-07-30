@@ -48,6 +48,12 @@
 #     This should be used where a stub is required for the final link
 #	  Will ignore duplicates
 #
+#   EM_RECIPE_ADD_CFLAGS(flags)
+#     Shall append flags to the CFLAGS used while compiling (stubs)
+#
+#   EM_RECIPE_ADD_LDFLAGS(flags)
+#     Shall append flags to the LDFLAGS used for final link
+#
 #   EM_RECIPE_ADD_LIB(lib)
 #     Shall append the library to recipe library list
 #	  This should be used to add a library to the final link command
@@ -115,6 +121,24 @@ EM_RECIPE_LIBS  ?=
 define EM_RECIPE_ADD_LIB
 ifeq ($(filter $(1),$(EM_RECIPE_LIBS)),)
 EM_RECIPE_LIBS  += $(1)
+endif
+endef
+########################################################################
+# EM_RECIPE_ADD_CFLAGS
+########################################################################
+EM_RECIPE_CFLAGS  ?=
+define EM_RECIPE_ADD_CFLAGS
+ifeq ($(filter $(1),$(EM_RECIPE_CFLAGS)),)
+EM_RECIPE_CFLAGS  += $(1)
+endif
+endef
+########################################################################
+# EM_RECIPE_ADD_LDFLAGS
+########################################################################
+EM_RECIPE_LDFLAGS  ?=
+define EM_RECIPE_ADD_LDFLAGS
+ifeq ($(filter $(1),$(EM_RECIPE_LDFLAGS)),)
+EM_RECIPE_LDFLAGS  += $(1)
 endif
 endef
 ########################################################################

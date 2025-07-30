@@ -43,7 +43,7 @@ $(EM_ZLIB_CONFIGURED): $(EM_ZLIB_TAR)
 		$(EMCONFIGURE) ./configure \
 			--static \
 			--prefix=$(EM_ZLIB_SRC) \
-			$(EM_ZLIB_OPS)
+			$(EM_ZLIB_OPTS)
 	@touch $@
 
 $(EM_ZLIB_MADE): $(EM_ZLIB_CONFIGURED)

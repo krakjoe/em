@@ -66,12 +66,12 @@ runs:
       id: build
       shell: bash
       run: |
-        # Convert recipes input to with-* targets
-        WITH="${{ inputs.with }}"
-        RECIPES=""
-        if [ -n "$WITH" ]; then
-          for RECIPE in $WITH; do
-            RECIPES="$RECIPES with-$RECIPE"
+        # Starting action ...
+        ACTION_WITH="${{ inputs.with }}"
+        EM_RECIPES=""
+        if [ -n "$ACTION_WITH" ]; then
+          for RECIPE in $ACTION_WITH; do
+            EM_RECIPES="$EM_RECIPES with-$RECIPE"
           done
         fi
 
@@ -81,7 +81,7 @@ runs:
         EM_EMSDK_CFLAGS=${{ inputs.EM_EMSDK_CFLAGS }} \
         EM_EMSDK_LDFLAGS=${{ inputs.EM_EMSDK_LDFLAGS }} \
           make -f ${{ github.action_path }}/em.mk \
-            $RECIPES
+            $EM_RECIPES
 
         # Copy outputs to current directory so caller can access them
         [ -f ./php-em.js ]   || { cp -f ${{ github.action_path }}/php-em.js ./;   }
