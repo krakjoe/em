@@ -76,11 +76,11 @@ runs:
         fi
 
         # Build command
-        make -f ${{ github.action_path }}/em.mk \
-          EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} \
-          EM_PHP_CONFIGURE=${{ inputs.EM_PHP_CONFIGURE }} \
-          EM_EMSDK_CFLAGS=${{ inputs.EM_EMSDK_CFLAGS }} \
-          EM_EMSDK_LDFLAGS=${{ inputs.EM_EMSDK_LDFLAGS }}
+        EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} \
+        EM_PHP_CONFIGURE=${{ inputs.EM_PHP_CONFIGURE }} \
+        EM_EMSDK_CFLAGS=${{ inputs.EM_EMSDK_CFLAGS }} \
+        EM_EMSDK_LDFLAGS=${{ inputs.EM_EMSDK_LDFLAGS }} \
+          make -f ${{ github.action_path }}/em.mk \
             $RECIPES
 
         # Copy outputs to current directory so caller can access them
