@@ -68,7 +68,7 @@ runs:
         fi
 
         # Build command
-        make -f em.mk \
+        make -f ${{ github.action_path }}/em.mk \
           EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} \
           EM_PHP_CONFIGURE=${{ inputs.EM_PHP_CONFIGURE }} \
             $RECIPES all
