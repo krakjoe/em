@@ -73,6 +73,10 @@ runs:
           EM_PHP_CONFIGURE=${{ inputs.EM_PHP_CONFIGURE }} \
             $RECIPES all
 
+        # Copy outputs to current directory so caller can access them
+        cp ${{ github.action_path }}/php-em.js ./
+        cp ${{ github.action_path }}/php-em.wasm ./
+
         # Set outputs
         echo "wasm-file=$(pwd)/php-em.wasm" >> $GITHUB_OUTPUT
         echo "js-file=$(pwd)/php-em.js" >> $GITHUB_OUTPUT
