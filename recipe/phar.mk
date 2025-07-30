@@ -17,4 +17,4 @@
 ########################################################################
 # Inject for em
 ########################################################################
-EM_EXTRA_CONFIGURE       += --enable-phar=static
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, --enable-phar=static))

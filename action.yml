@@ -12,12 +12,20 @@ inputs:
     description: 'Extra configure arguments for PHP'
     required: false
     default: ''
+  EM_EMSDK_CFLAGS:
+    description: 'Extra CFLAGS used when compiling with emcc'
+    required: false
+    default: ''
+  EM_EMSDK_LDFLAGS:
+    description: 'Extra LDFLAGS used when linking with emcc'
+    required: false
+    default: ''
   with:
     description: 'Space-separated list of recipes to build (e.g. "ctype opcache pdo sqlite3")'
     required: false
     default: ''
-  emscripten-version:
-    description: 'emscripten version to use'
+  emsdk:
+    description: 'emsdk version to use'
     required: false
     default: '4.0.11'
 
@@ -32,10 +40,10 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Setup Emscripten
+    - name: Setup emsdk
       uses: mymindstorm/setup-emsdk@v12
       with:
-        version: ${{ inputs.emscripten-version }}
+        version: ${{ inputs.emsdk }}
 
     - name: Validate PHP directory
       shell: bash
@@ -71,7 +79,9 @@ runs:
         make -f ${{ github.action_path }}/em.mk \
           EM_PHP_DIR=${{ inputs.EM_PHP_DIR }} \
           EM_PHP_CONFIGURE=${{ inputs.EM_PHP_CONFIGURE }} \
-            $RECIPES all
+          EM_EMSDK_CFLAGS=${{ inputs.EM_EMSDK_CFLAGS }} \
+          EM_EMSDK_LDFLAGS=${{ inputs.EM_EMSDK_LDFLAGS }}
+            $RECIPES
 
         # Copy outputs to current directory so caller can access them
         [ -f ./php-em.js ]   || { cp -f ${{ github.action_path }}/php-em.js ./;   }

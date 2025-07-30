@@ -14,12 +14,14 @@
 # Author: krakjoe                                                      #
 ########################################################################
 EM_BZ2_URL   = https://www.sourceware.org/pub/bzip2/bzip2-latest.tar.gz
-EM_BZ2_TAR   = $(EM_EXTRA_RECIPE_OUT)/bz2-1.3.1.tar.gz
-EM_BZ2_SRC   = $(EM_EXTRA_RECIPE_OUT)/bz2
+EM_BZ2_TAR   = $(EM_RECIPE_OUT)/bz2-1.3.1.tar.gz
+EM_BZ2_SRC   = $(EM_RECIPE_OUT)/bz2
 EM_BZ2_LIB   = $(EM_BZ2_SRC)/lib/libbz2.a
 EM_BZ2_INC   = $(EM_BZ2_SRC)/include
 ########################################################################
-EM_BZ2_CFLAGS ?= -Wall -Winline -O2
+EM_BZ2_CFLAGS    ?= -Wall -Winline -O2
+EM_BZ2_LDFLAGS   ?=
+EM_BZ2_CONFIGURE ?= --with-bz2=$(EM_BZ2_SRC)
 ########################################################################
 .PHONY: all-bz2 clean-bz2
 ########################################################################
@@ -57,12 +59,12 @@ clean-bz2:
 	@rm -rf $(EM_BZ2_SRC)
 
 ########################################################################
-# Inject for em
+# Setup recipe
 ########################################################################
-EM_EXTRA_RECIPE_TARGETS  += $(EM_BZ2_LIB)
-EM_EXTRA_RECIPE_CLEANERS += clean-bz2
-EM_EXTRA_CONFIGURE       += --with-bz2=$(EM_BZ2_SRC)
-EM_EXTRA_LINK            += $(EM_BZ2_LIB)
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, $(EM_BZ2_CONFIGURE)))
+$(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_BZ2_LIB)))
+$(eval $(call EM_RECIPE_ADD_LIB,       $(EM_BZ2_LIB)))
+$(eval $(call EM_RECIPE_ADD_CLEANER,   clean-bz2))
 ########################################################################
 # Inject for autoconf
 ########################################################################

@@ -34,16 +34,16 @@ ifeq ($(call EM_PHP_VERSION_GE,80400),true)
 # Inject stub for build
 ########################################################################
 $(eval $(call \
-	EM_RECIPE_ADD_LINK_STUB,\
-		$(EM_EXTRA_RECIPE_STUBS)/shm.c))
+	EM_RECIPE_ADD_LINK,\
+		$(EM_RECIPE_STUBS)/shm.c))
 $(eval $(call \
-	EM_RECIPE_ADD_LINK_STUB,\
-		$(EM_EXTRA_RECIPE_STUBS)/initgroups.c))
+	EM_RECIPE_ADD_LINK,\
+		$(EM_RECIPE_STUBS)/initgroups.c))
 ########################################################################
-# Inject for em
+# Setup recipe
 ########################################################################
-EM_EXTRA_CONFIGURE       += --enable-opcache
-EM_EXTRA_CONFIGURE       += --disable-opcache-jit
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, --enable-opcache))
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, --disable-opcache-jit))
 ########################################################################
 # Inject for autoconf
 ########################################################################

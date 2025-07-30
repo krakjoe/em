@@ -13,9 +13,7 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
-# Nothing to do ...
+# Setup recipe
 ########################################################################
-# Inject for em
-########################################################################
-EM_EXTRA_CONFIGURE       += --enable-mbstring=static
-EM_EXTRA_CONFIGURE       += --disable-mbregex
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, --enable-mbstring=static))
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, --disable-mbregex))

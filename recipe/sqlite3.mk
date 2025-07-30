@@ -14,14 +14,15 @@
 # Author: krakjoe                                                      #
 ########################################################################
 EM_SQLITE3_URL   = https://sqlite.org/src/tarball/sqlite.tar.gz?r=release
-EM_SQLITE3_TAR   = $(EM_EXTRA_RECIPE_OUT)/sqlite3.tar.gz
-EM_SQLITE3_SRC   = $(EM_EXTRA_RECIPE_OUT)/sqlite3
+EM_SQLITE3_TAR   = $(EM_RECIPE_OUT)/sqlite3.tar.gz
+EM_SQLITE3_SRC   = $(EM_RECIPE_OUT)/sqlite3
 EM_SQLITE3_LIB   = $(EM_SQLITE3_SRC)/lib/libsqlite3.a
 EM_SQLITE3_INC   = $(EM_SQLITE3_SRC)/include
 ########################################################################
+EM_SQLITE3_OPTS      ?=
 EM_SQLITE3_CFLAGS    ?=
 EM_SQLITE3_LDFLAGS   ?=
-EM_SQLITE3_CONFIGURE ?=
+EM_SQLITE3_CONFIGURE ?= --with-sqlite3=static,$(EM_SQLITE3_SRC)
 ########################################################################
 EM_SQLITE3_CONFIGURED  = $(EM_SQLITE3_SRC)/Makefile
 EM_SQLITE3_MADE        = $(EM_SQLITE3_SRC)/libsqlite3.a
@@ -47,13 +48,13 @@ $(EM_SQLITE3_CONFIGURED): $(EM_SQLITE3_TAR)
 			--disable-shared \
 			--enable-static \
 			--prefix=$(EM_SQLITE3_SRC) \
-			$(EM_SQLITE3_CONFIGURE)
+			$(EM_SQLITE3_OPTS)
 	@touch $@
 
 $(EM_SQLITE3_MADE): $(EM_SQLITE3_CONFIGURED)
 	cd $(EM_SQLITE3_SRC) && \
 	CFLAGS=$(EM_SQLITE3_CFLAGS) LDFLAGS=$(EM_SQLITE3_LDFLAGS) \
-		$(EMMAKE) make -j$(EM_EXTRA_NPROC)
+		$(EMMAKE) make -j$(EM_PHP_PROC)
 
 $(EM_SQLITE3_LIB): $(EM_SQLITE3_MADE)
 	cd $(EM_SQLITE3_SRC) && \
@@ -65,12 +66,12 @@ clean-sqlite3:
 	@rm -rf $(EM_SQLITE3_SRC)
 
 ########################################################################
-# Inject for em
+# Setup recipe
 ########################################################################
-EM_EXTRA_RECIPE_TARGETS  += $(EM_SQLITE3_LIB)
-EM_EXTRA_RECIPE_CLEANERS += clean-sqlite3
-EM_EXTRA_CONFIGURE       += --with-sqlite3=static,$(EM_SQLITE3_SRC)
-EM_EXTRA_LINK            += $(EM_SQLITE3_LIB)
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, $(EM_SQLITE3_CONFIGURE)))
+$(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_SQLITE3_LIB)))
+$(eval $(call EM_RECIPE_ADD_LIB,       $(EM_SQLITE3_LIB)))
+$(eval $(call EM_RECIPE_ADD_CLEANER,   clean-sqlite3))
 ########################################################################
 # Export for php
 ########################################################################

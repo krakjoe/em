@@ -14,14 +14,15 @@
 # Author: krakjoe                                                      #
 ########################################################################
 EM_ZLIB_URL   = https://zlib.net/zlib-1.3.1.tar.gz
-EM_ZLIB_TAR   = $(EM_EXTRA_RECIPE_OUT)/zlib-1.3.1.tar.gz
-EM_ZLIB_SRC   = $(EM_EXTRA_RECIPE_OUT)/zlib
+EM_ZLIB_TAR   = $(EM_RECIPE_OUT)/zlib-1.3.1.tar.gz
+EM_ZLIB_SRC   = $(EM_RECIPE_OUT)/zlib
 EM_ZLIB_LIB   = $(EM_ZLIB_SRC)/lib/libz.a
 EM_ZLIB_INC   = $(EM_ZLIB_SRC)/include
 ########################################################################
+EM_ZLIB_OPTS      ?=
 EM_ZLIB_CFLAGS    ?=
 EM_ZLIB_LDFLAGS   ?=
-EM_ZLIB_CONFIGURE ?=
+EM_ZLIB_CONFIGURE ?= --with-zlib=static,$(EM_ZLIB_SRC)
 ########################################################################
 EM_ZLIB_CONFIGURED  = $(EM_ZLIB_SRC)/Makefile
 EM_ZLIB_MADE        = $(EM_ZLIB_SRC)/libz.a
@@ -42,13 +43,13 @@ $(EM_ZLIB_CONFIGURED): $(EM_ZLIB_TAR)
 		$(EMCONFIGURE) ./configure \
 			--static \
 			--prefix=$(EM_ZLIB_SRC) \
-			$(EM_ZLIB_CONFIGURE)
+			$(EM_ZLIB_OPS)
 	@touch $@
 
 $(EM_ZLIB_MADE): $(EM_ZLIB_CONFIGURED)
 	cd $(EM_ZLIB_SRC) && \
 	CFLAGS=$(EM_ZLIB_CFLAGS) LDFLAGS=$(EM_ZLIB_LDFLAGS) \
-		$(EMMAKE) make -j$(EM_EXTRA_NPROC)
+		$(EMMAKE) make -j$(EM_PHP_PROC)
 
 $(EM_ZLIB_LIB): $(EM_ZLIB_MADE)
 	cd $(EM_ZLIB_SRC) && \
@@ -60,12 +61,12 @@ clean-zlib:
 	@rm -rf $(EM_ZLIB_SRC)
 
 ########################################################################
-# Inject for em
+# Setup recipe
 ########################################################################
-EM_EXTRA_RECIPE_TARGETS  += $(EM_ZLIB_LIB)
-EM_EXTRA_RECIPE_CLEANERS += clean-zlib
-EM_EXTRA_CONFIGURE       += --with-zlib=static,$(EM_ZLIB_SRC)
-EM_EXTRA_LINK            += $(EM_ZLIB_LIB)
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, $(EM_ZLIB_CONFIGURE)))
+$(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_ZLIB_LIB)))
+$(eval $(call EM_RECIPE_ADD_LIB,       $(EM_ZLIB_LIB)))
+$(eval $(call EM_RECIPE_ADD_CLEANER,   clean-zlib))
 ########################################################################
 # Export for php
 ########################################################################
