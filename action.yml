@@ -74,8 +74,8 @@ runs:
             $RECIPES all
 
         # Copy outputs to current directory so caller can access them
-        [ -f ./php-em.js ]  || cp -f ${{ github.action_path }}/php-em.js ./
-        [ -f ./php-em.wasm] || cp -f ${{ github.action_path }}/php-em.wasm ./
+        [ -f ./php-em.js ]   || { cp -f ${{ github.action_path }}/php-em.js ./;   }
+        [ -f ./php-em.wasm ] || { cp -f ${{ github.action_path }}/php-em.wasm ./; }
 
         # Set outputs
         echo "wasm-file=$(pwd)/php-em.wasm" >> $GITHUB_OUTPUT
