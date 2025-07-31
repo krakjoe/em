@@ -65,6 +65,7 @@
         .main-container {
             display: flex;
             height: calc(100vh - 80px);
+            min-height: 0;
         }
 
         .file-explorer {
@@ -165,13 +166,16 @@
             flex: 1;
             display: flex;
             flex-direction: column;
+            min-height: 0;
         }
 
         .editor-panel {
-            flex: 1;
+            flex: 1 1 0%;
             display: flex;
             flex-direction: column;
             border-right: 1px solid #404040;
+            min-height: 0;
+            overflow: auto;
         }
 
         .editor-header {
@@ -184,9 +188,11 @@
         }
 
         .output-panel {
-            flex: 1;
+            flex: 1 1 0%;
             display: flex;
             flex-direction: column;
+            min-height: 0;
+            overflow: auto;
         }
 
         .output-header {
