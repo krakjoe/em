@@ -42,7 +42,7 @@ $(EM_SQLITE3_TAR):
 
 $(EM_SQLITE3_CONFIGURED): $(EM_SQLITE3_TAR)
 	cd $(EM_SQLITE3_SRC) && \
-	CFLAGS=$(EM_SQLITE3_CFLAGS) LDFLAGS=$(EM_SQLITE3_LDFLAGS) \
+	CFLAGS="$(EM_SQLITE3_CFLAGS)" LDFLAGS="$(EM_SQLITE3_LDFLAGS)" \
 		$(EMCONFIGURE) ./configure \
 			--disable-threadsafe \
 			--disable-readline \
@@ -50,8 +50,7 @@ $(EM_SQLITE3_CONFIGURED): $(EM_SQLITE3_TAR)
 			--disable-tcl \
 			--disable-shared \
 			--enable-static \
-			--prefix=$(EM_SQLITE3_SRC) \
-			$(EM_SQLITE3_OPTS)
+			--prefix=$(EM_SQLITE3_SRC) $(EM_SQLITE3_OPTS)
 	@touch $@
 
 $(EM_SQLITE3_MADE): $(EM_SQLITE3_CONFIGURED)
