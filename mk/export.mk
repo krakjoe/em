@@ -39,6 +39,7 @@ EM_EXPORT_FUNCTIONS = [          \
 	"_em_vfs_put",               \
 	"_em_vfs_unlink",            \
 	"_em_vfs_mkdir",             \
+	"_em_vfs_move",              \
 	"_em_vfs_get_address",       \
 	"_em_vfs_get_length",        \
 	"_em_vfs_reset",             \

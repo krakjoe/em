@@ -50,12 +50,13 @@ em_vfs_node_t* em_vfs_node_mkfile(em_vfs_node_t* parent, const char* name) {
     em_vfs_node_t* file = pecalloc(1, sizeof(em_vfs_node_t), 1);
     file->kind = EM_VFS_FILE;
     file->name = pestrdup(name, 1);
-    file->parent = parent;
+    file->parent = em_vfs_node_copy(parent);
     file->data.file.created = time(NULL);
     file->data.file.modified = time(NULL);
     zend_hash_str_add_ptr(
         &parent->data.dir.children,
         name, strlen(name), file);
+    file->refcount = 1;
     return file;
 }
 
@@ -63,18 +64,27 @@ em_vfs_node_t* em_vfs_node_mkdir(em_vfs_node_t* parent, const char* name) {
     em_vfs_node_t* dir = pecalloc(1, sizeof(em_vfs_node_t), 1);
     dir->kind = EM_VFS_DIR;
     dir->name = pestrdup(name, 1);
-    dir->parent = parent;
+    dir->parent = em_vfs_node_copy(parent);
     dir->data.dir.created  = time(NULL);
     zend_hash_init(
         &dir->data.dir.children, 8, NULL,
         em_vfs_node_dtor, 1);
     zend_hash_str_add_ptr( 
         &parent->data.dir.children,
-        name, strlen(name), dir);    
+        name, strlen(name), dir);  
+    dir->refcount = 1;  
     return dir;
 }
 
 void em_vfs_node_release(em_vfs_node_t* node) {
+    if (--node->refcount) {
+        return;
+    }
+
+    if (node->parent) {
+        em_vfs_node_release(node->parent);
+    }
+
     if (node->name) {
         pefree(node->name, 1);
     }

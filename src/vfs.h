@@ -48,6 +48,10 @@ bool EMSCRIPTEN_KEEPALIVE
         bool directories);
 bool EMSCRIPTEN_KEEPALIVE
     em_vfs_mkdir(const char* path);
+bool EMSCRIPTEN_KEEPALIVE
+    em_vfs_move(
+        const char* from,
+        const char* to);
 void* EMSCRIPTEN_KEEPALIVE
     em_vfs_get_address(const char* path);
 ssize_t EMSCRIPTEN_KEEPALIVE

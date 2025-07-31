@@ -256,12 +256,25 @@ Module.vfs = {
      * Shall unlink the given path
      * @param {string} path 
      * @param {bool} directories 
+     * @returns bool
      * Shall return false if directories if false and path is a directory
      */
     unlink: function(path, directories = false) {
         return Module.ccall('em_vfs_unlink', 'bool',
             ['string', 'bool'],
             [ path, directories ]);
+    },
+
+    /**
+     * Shall move the entry
+     * @param {string} from 
+     * @param {string} to 
+     * @returns bool
+     */
+    move: function(from, to) {
+        return Module.ccall('em_vfs_move', 'bool',
+            [ 'string', 'string' ],
+            [ from, to ]);
     },
 
     /**

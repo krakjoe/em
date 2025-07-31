@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -68,6 +67,96 @@
             height: calc(100vh - 80px);
         }
 
+        .file-explorer {
+            width: 300px;
+            background: #252526;
+            border-right: 1px solid #404040;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .explorer-header {
+            background: #2d2d2d;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        .explorer-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .explorer-controls button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .file-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 0.9rem;
+            margin: 1px 0;
+        }
+
+        .file-item:hover {
+            background: #404040;
+        }
+
+        .file-item.selected {
+            background: #0e639c;
+        }
+
+        .file-item.directory {
+            font-weight: 500;
+        }
+
+        .file-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 0.5rem;
+            flex-shrink: 0;
+        }
+
+        .expand-icon {
+            width: 12px;
+            height: 12px;
+            margin-right: 0.25rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+
+        .file-children {
+            margin-left: 1rem;
+            display: none;
+        }
+
+        .file-children.expanded {
+            display: block;
+        }
+
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
         .editor-panel {
             flex: 1;
             display: flex;
@@ -95,7 +184,7 @@
             padding: 0.5rem 1rem;
             border-bottom: 1px solid #404040;
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
         }
 
@@ -139,11 +228,72 @@
             margin-left: auto;
         }
 
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #2d2d2d;
+            padding: 2rem;
+            border-radius: 8px;
+            border: 1px solid #404040;
+            min-width: 300px;
+        }
+
+        .modal h3 {
+            margin-bottom: 1rem;
+            color: #ffffff;
+        }
+
+        .modal input {
+            width: 100%;
+            padding: 0.5rem;
+            background: #404040;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: white;
+            margin-bottom: 1rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        @media (max-width: 1024px) {
+            .file-explorer {
+                width: 250px;
+            }
+        }
+
         @media (max-width: 768px) {
             .main-container {
                 flex-direction: column;
             }
             
+            .file-explorer {
+                width: 100%;
+                height: 200px;
+                border-right: none;
+                border-bottom: 1px solid #404040;
+            }
+
+            .editor-container {
+                flex-direction: column;
+            }
+
             .editor-panel {
                 border-right: none;
                 border-bottom: 1px solid #404040;
@@ -152,6 +302,34 @@
             .controls {
                 font-size: 0.8rem;
             }
+        }
+
+        .context-menu {
+            display: none;
+            position: fixed;
+            background: #2d2d2d;
+            border: 1px solid #404040;
+            border-radius: 4px;
+            padding: 0.25rem 0;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .context-menu-item {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .context-menu-item:hover {
+            background: #404040;
+        }
+
+        .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -188,25 +366,64 @@
     </div>
 
     <div class="main-container">
-        <div class="editor-panel">
-            <div class="editor-header">
-                <span>PHP Code Editor</span>
-                <span id="editorStatus">Loading...</span>
+        <div class="file-explorer">
+            <div class="explorer-header">
+                <span>Files</span>
+                <div class="explorer-controls">
+                    <button id="newFile" title="New File">📄</button>
+                    <button id="newFolder" title="New Folder">📁</button>
+                    <button id="refreshFiles" title="Refresh">🔄</button>
+                </div>
             </div>
-            <textarea id="codeEditor"></textarea>
+            <div class="file-tree" id="fileTree">
+                <div class="file-item" data-path="">
+                    <span class="expand-icon">▶</span>
+                    <span class="file-icon">📁</span>
+                    <span class="file-name">vfs://</span>
+                </div>
+            </div>
         </div>
 
-        <div class="output-panel">
-            <div class="output-header">
-                <span>Output</span>
-                <span id="outputStatus"></span>
+        <div class="editor-container">
+            <div class="editor-panel">
+                <div class="editor-header">
+                    <span id="currentFile">PHP Code Editor</span>
+                    <span id="editorStatus">Loading...</span>
+                </div>
+                <textarea id="codeEditor"></textarea>
             </div>
-            <div id="output" class="output">Loading PHP runtime...</div>
+
+            <div class="output-panel">
+                <div class="output-header">
+                    <span>Output</span>
+                    <span id="outputStatus"></span>
+                </div>
+                <div id="output" class="output">Loading PHP runtime...</div>
+            </div>
         </div>
     </div>
 
     <div class="status" id="statusBar">
         Loading...
+    </div>
+
+    <!-- Modals -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">New File</h3>
+            <input type="text" id="modalInput" placeholder="Enter file name">
+            <div class="modal-actions">
+                <button id="modalCancel">Cancel</button>
+                <button id="modalOk">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="contextMenu" class="context-menu">
+        <div class="context-menu-item" data-action="open">Open</div>
+        <div class="context-menu-item" data-action="rename">Rename</div>
+        <div class="context-menu-item" data-action="delete">Delete</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
@@ -225,9 +442,10 @@
         // Initialize CodeMirror
         let editor;
         
-        // Global state - declare Module properly  
-        //let Module = null;
+        // Global state
         let isReady = false;
+        let currentOpenFile = null;
+        let unsavedChanges = false;
 
         // DOM elements
         const phpVersionSelect = document.getElementById('phpVersion');
@@ -239,6 +457,23 @@
         const statusBar = document.getElementById('statusBar');
         const editorStatus = document.getElementById('editorStatus');
         const outputStatus = document.getElementById('outputStatus');
+        const currentFileElement = document.getElementById('currentFile');
+        
+        // File explorer elements
+        const fileTree = document.getElementById('fileTree');
+        const newFileButton = document.getElementById('newFile');
+        const newFolderButton = document.getElementById('newFolder');
+        const refreshFilesButton = document.getElementById('refreshFiles');
+        const fileModal = document.getElementById('fileModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalInput = document.getElementById('modalInput');
+        const modalCancel = document.getElementById('modalCancel');
+        const modalOk = document.getElementById('modalOk');
+        const contextMenu = document.getElementById('contextMenu');
+
+        // File explorer state
+        let currentModalAction = null;
+        let currentContextPath = null;
 
         // Demo code snippets
         const demos = {
@@ -575,14 +810,489 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
 ?>`
         };
 
+        // File Explorer Functions
+        function refreshFileTree() {
+            if (!isReady || !Module || !Module.vfs) {
+                return;
+            }
+
+            try {
+                const iterator = Module.vfs.iterate('vfs://');
+                const files = iterator.all(true);
+                iterator.free();
+                
+                renderFileTree(files);
+            } catch (error) {
+                console.error('Error refreshing file tree:', error);
+                updateStatus('Error refreshing file tree', 'error');
+            }
+        }
+
+        function renderFileTree(files, container = fileTree, basePath = 'vfs://') {
+            // Keep the root vfs:// item, clear children
+            if (container === fileTree) {
+                const rootItem = container.querySelector('.file-item');
+                const existingChildren = container.querySelector('.file-children');
+                if (existingChildren) {
+                    existingChildren.remove();
+                }
+                
+                if (files.length > 0) {
+                    const childrenContainer = document.createElement('div');
+                    childrenContainer.className = 'file-children expanded';
+                    renderFileItems(files, childrenContainer, basePath);
+                    container.appendChild(childrenContainer);
+                    
+                    const expandIcon = rootItem.querySelector('.expand-icon');
+                    expandIcon.textContent = '▼';
+                    expandIcon.classList.add('expanded');
+                }
+            } else {
+                renderFileItems(files, container, basePath);
+            }
+        }
+
+        function renderFileItems(files, container, basePath) {
+            container.innerHTML = '';
+            
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.dataset.path = basePath + file.name;
+                
+                if (file.kind === Module.vfs.EM_VFS_DIR) {
+                    item.classList.add('directory');
+                    
+                    const expandIcon = document.createElement('span');
+                    expandIcon.className = 'expand-icon';
+                    expandIcon.textContent = file.children ? '▼' : '▶';
+                    if (file.children) expandIcon.classList.add('expanded');
+                    item.appendChild(expandIcon);
+                    
+                    const icon = document.createElement('span');
+                    icon.className = 'file-icon';
+                    icon.textContent = '📁';
+                    item.appendChild(icon);
+                    
+                    const name = document.createElement('span');
+                    name.className = 'file-name';
+                    name.textContent = file.name;
+                    item.appendChild(name);
+                    
+                    container.appendChild(item);
+                    
+                    if (file.children) {
+                        const childrenContainer = document.createElement('div');
+                        childrenContainer.className = 'file-children expanded';
+                        renderFileItems(file.children, childrenContainer, basePath + file.name + '/');
+                        container.appendChild(childrenContainer);
+                    }
+                    
+                    expandIcon.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleDirectory(item);
+                    });
+                } else {
+                    const icon = document.createElement('span');
+                    icon.className = 'file-icon';
+                    icon.textContent = getFileIcon(file.name);
+                    item.appendChild(icon);
+                    
+                    const name = document.createElement('span');
+                    name.className = 'file-name';
+                    name.textContent = file.name;
+                    item.appendChild(name);
+                    
+                    container.appendChild(item);
+                }
+                
+                // Event listeners
+                item.addEventListener('click', () => selectFile(item));
+                item.addEventListener('dblclick', () => openFile(item.dataset.path));
+                item.addEventListener('contextmenu', (e) => showContextMenu(e, item.dataset.path));
+            });
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            switch (ext) {
+                case 'php': return '🐘';
+                case 'js': return '📜';
+                case 'json': return '📋';
+                case 'txt': return '📄';
+                case 'md': return '📝';
+                case 'html': case 'htm': return '🌐';
+                case 'css': return '🎨';
+                case 'sql': return '🗃️';
+                default: return '📄';
+            }
+        }
+
+        function toggleDirectory(item) {
+            const expandIcon = item.querySelector('.expand-icon');
+            const nextSibling = item.nextElementSibling;
+            
+            if (nextSibling && nextSibling.classList.contains('file-children')) {
+                if (nextSibling.classList.contains('expanded')) {
+                    nextSibling.classList.remove('expanded');
+                    expandIcon.textContent = '▶';
+                    expandIcon.classList.remove('expanded');
+                } else {
+                    nextSibling.classList.add('expanded');
+                    expandIcon.textContent = '▼';
+                    expandIcon.classList.add('expanded');
+                }
+            }
+        }
+
+        function selectFile(item) {
+            // Remove previous selection
+            document.querySelectorAll('.file-item.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            // Add selection to current item
+            item.classList.add('selected');
+        }
+
+        function openFile(path) {
+            if (!isReady || !Module || !Module.vfs) {
+                updateStatus('PHP runtime not ready', 'error');
+                return;
+            }
+
+            try {
+                const content = Module.vfs.get(path);
+                if (content === false) {
+                    updateStatus(`Failed to open file: ${path}`, 'error');
+                    return;
+                }
+
+                // Convert Uint8Array to string
+                const decoder = new TextDecoder('utf-8');
+                const text = decoder.decode(content);
+
+                // Save current file if there are unsaved changes
+                if (currentOpenFile && unsavedChanges) {
+                    if (!confirm('You have unsaved changes. Open new file anyway?')) {
+                        return;
+                    }
+                }
+
+                editor.setValue(text);
+                currentOpenFile = path;
+                unsavedChanges = false;
+                updateCurrentFileDisplay();
+                updateStatus(`Opened: ${path}`, 'success');
+            } catch (error) {
+                console.error('Error opening file:', error);
+                updateStatus(`Error opening file: ${path}`, 'error');
+            }
+        }
+
+        function saveCurrentFile() {
+            if (!currentOpenFile) {
+                updateStatus('No file open to save', 'error');
+                return;
+            }
+
+            if (!isReady || !Module || !Module.vfs) {
+                updateStatus('PHP runtime not ready', 'error');
+                return;
+            }
+
+            try {
+                const content = editor.getValue();
+                const success = Module.vfs.put(currentOpenFile, content);
+                
+                if (success) {
+                    unsavedChanges = false;
+                    updateCurrentFileDisplay();
+                    updateStatus(`Saved: ${currentOpenFile}`, 'success');
+                    refreshFileTree();
+                } else {
+                    updateStatus(`Failed to save: ${currentOpenFile}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving file:', error);
+                updateStatus(`Error saving file: ${currentOpenFile}`, 'error');
+            }
+        }
+
+        function updateCurrentFileDisplay() {
+            if (currentOpenFile) {
+                const filename = currentOpenFile.split('/').pop();
+                currentFileElement.textContent = filename + (unsavedChanges ? ' •' : '');
+            } else {
+                currentFileElement.textContent = 'PHP Code Editor';
+            }
+        }
+
+        function showContextMenu(e, path) {
+            e.preventDefault();
+            currentContextPath = path;
+            
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = e.pageX + 'px';
+            contextMenu.style.top = e.pageY + 'px';
+        }
+
+        function hideContextMenu() {
+            contextMenu.style.display = 'none';
+            currentContextPath = null;
+        }
+
+        function showModal(title, placeholder, action) {
+            modalTitle.textContent = title;
+            modalInput.placeholder = placeholder;
+            modalInput.value = '';
+            currentModalAction = action;
+            fileModal.style.display = 'block';
+            modalInput.focus();
+        }
+
+        function hideModal() {
+            fileModal.style.display = 'none';
+            currentModalAction = null;
+        }
+
+        function createFile() {
+            if (!isReady || !Module || !Module.vfs) {
+                updateStatus('PHP runtime not ready', 'error');
+                return;
+            }
+
+            const filename = modalInput.value.trim();
+            if (!filename) {
+                updateStatus('Please enter a filename', 'error');
+                return;
+            }
+
+            const path = 'vfs://' + filename;
+            
+            try {
+                const success = Module.vfs.put(path, '<?php\n// New PHP file\necho "Hello from ' + filename + '!";\n?>');
+                if (success) {
+                    refreshFileTree();
+                    openFile(path);
+                    updateStatus(`Created: ${filename}`, 'success');
+                } else {
+                    updateStatus(`Failed to create: ${filename}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error creating file:', error);
+                updateStatus(`Error creating file: ${filename}`, 'error');
+            }
+            
+            hideModal();
+        }
+
+        function createFolder() {
+            if (!isReady || !Module || !Module.vfs) {
+                updateStatus('PHP runtime not ready', 'error');
+                return;
+            }
+
+            const foldername = modalInput.value.trim();
+            if (!foldername) {
+                updateStatus('Please enter a folder name', 'error');
+                return;
+            }
+
+            const path = 'vfs://' + foldername;
+            
+            try {
+                const success = Module.vfs.mkdir(path);
+                if (success) {
+                    refreshFileTree();
+                    updateStatus(`Created folder: ${foldername}`, 'success');
+                } else {
+                    updateStatus(`Failed to create folder: ${foldername}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error creating folder:', error);
+                updateStatus(`Error creating folder: ${foldername}`, 'error');
+            }
+            
+            hideModal();
+        }
+
+        function renameFile() {
+            if (!currentContextPath) return;
+
+            const currentName = currentContextPath.split('/').pop();
+            modalInput.value = currentName;
+            showModal('Rename', 'Enter new name', 'rename');
+        }
+
+        function deleteFile() {
+            if (!currentContextPath) return;
+            
+            if (!confirm(`Are you sure you want to delete ${currentContextPath}?`)) {
+                return;
+            }
+
+            if (!isReady || !Module || !Module.vfs) {
+                updateStatus('PHP runtime not ready', 'error');
+                return;
+            }
+
+            try {
+                const success = Module.vfs.unlink(currentContextPath, true);
+                if (success) {
+                    // Close file if it's currently open
+                    if (currentOpenFile === currentContextPath) {
+                        currentOpenFile = null;
+                        unsavedChanges = false;
+                        updateCurrentFileDisplay();
+                        editor.setValue('');
+                    }
+                    
+                    refreshFileTree();
+                    updateStatus(`Deleted: ${currentContextPath}`, 'success');
+                } else {
+                    updateStatus(`Failed to delete: ${currentContextPath}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting file:', error);
+                updateStatus(`Error deleting: ${currentContextPath}`, 'error');
+            }
+        }
+
+        function performRename() {
+            if (!currentContextPath) return;
+
+            const newName = modalInput.value.trim();
+            if (!newName) {
+                updateStatus('Please enter a new name', 'error');
+                return;
+            }
+
+            const pathParts = currentContextPath.split('/');
+            pathParts[pathParts.length - 1] = newName;
+            const newPath = pathParts.join('/');
+
+            if (!isReady || !Module || !Module.vfs) {
+                updateStatus('PHP runtime not ready', 'error');
+                return;
+            }
+
+            try {
+                const success = Module.vfs.move(currentContextPath, newPath);
+                if (success) {
+                    // Update current open file path if renamed
+                    if (currentOpenFile === currentContextPath) {
+                        currentOpenFile = newPath;
+                        updateCurrentFileDisplay();
+                    }
+                    
+                    refreshFileTree();
+                    updateStatus(`Renamed to: ${newName}`, 'success');
+                } else {
+                    updateStatus(`Failed to rename: ${currentContextPath}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error renaming file:', error);
+                updateStatus(`Error renaming: ${currentContextPath}`, 'error');
+            }
+            
+            hideModal();
+        }
+
         // Set up event handlers
         function initializeEventHandlers() {
             phpVersionSelect.value = currentPHPVersion;
             phpVersionSelect.addEventListener('change', switchPHPVersion);
             runButton.addEventListener('click', runCode);
             clearOutputButton.addEventListener('click', clearOutput);
-            resetVFSButton.addEventListener('click', resetVFS);
+            resetVFSButton.addEventListener('click', () => {
+                resetVFS();
+                refreshFileTree();
+            });
             demoSelect.addEventListener('change', loadDemo);
+
+            // File explorer event handlers
+            newFileButton.addEventListener('click', () => {
+                showModal('New File', 'Enter filename (e.g., script.php)', 'file');
+            });
+            
+            newFolderButton.addEventListener('click', () => {
+                showModal('New Folder', 'Enter folder name', 'folder');
+            });
+            
+            refreshFilesButton.addEventListener('click', refreshFileTree);
+
+            // Modal event handlers
+            modalCancel.addEventListener('click', hideModal);
+            modalOk.addEventListener('click', () => {
+                switch (currentModalAction) {
+                    case 'file':
+                        createFile();
+                        break;
+                    case 'folder':
+                        createFolder();
+                        break;
+                    case 'rename':
+                        performRename();
+                        break;
+                }
+            });
+
+            modalInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    modalOk.click();
+                } else if (e.key === 'Escape') {
+                    hideModal();
+                }
+            });
+
+            // Context menu event handlers
+            document.addEventListener('click', hideContextMenu);
+            
+            contextMenu.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = e.target.dataset.action;
+                
+                switch (action) {
+                    case 'open':
+                        openFile(currentContextPath);
+                        break;
+                    case 'rename':
+                        renameFile();
+                        break;
+                    case 'delete':
+                        deleteFile();
+                        break;
+                }
+                
+                hideContextMenu();
+            });
+
+            // Root VFS directory click handler
+            const rootItem = fileTree.querySelector('.file-item');
+            rootItem.addEventListener('click', () => selectFile(rootItem));
+            
+            const rootExpandIcon = rootItem.querySelector('.expand-icon');
+            rootExpandIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleDirectory(rootItem);
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    switch (e.key) {
+                        case 's':
+                            e.preventDefault();
+                            saveCurrentFile();
+                            break;
+                        case 'n':
+                            e.preventDefault();
+                            showModal('New File', 'Enter filename (e.g., script.php)', 'file');
+                            break;
+                    }
+                }
+            });
         }
 
         // Switch PHP version by reloading page
@@ -607,6 +1317,9 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
             if (selectedDemo && demos[selectedDemo]) {
                 editor.setValue(demos[selectedDemo]);
                 demoSelect.value = ''; // Reset selection
+                currentOpenFile = null;
+                unsavedChanges = false;
+                updateCurrentFileDisplay();
             }
         }
 
@@ -620,6 +1333,10 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
         function resetVFS() {
             if (Module && Module.vfs) {
                 Module.vfs.reset();
+                currentOpenFile = null;
+                unsavedChanges = false;
+                updateCurrentFileDisplay();
+                editor.setValue('');
                 updateStatus('VFS reset successfully', 'success');
             }
         }
@@ -659,6 +1376,7 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                 console.error('Execution error:', error);
             } finally {
                 runButton.disabled = false;
+                refreshFileTree();
             }
         }
 
@@ -673,7 +1391,17 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                 lineWrapping: true,
                 extraKeys: {
                     'Ctrl-Enter': runCode,
-                    'Cmd-Enter': runCode
+                    'Cmd-Enter': runCode,
+                    'Ctrl-S': saveCurrentFile,
+                    'Cmd-S': saveCurrentFile
+                }
+            });
+
+            // Track changes for unsaved indicator
+            editor.on('change', () => {
+                if (currentOpenFile) {
+                    unsavedChanges = true;
+                    updateCurrentFileDisplay();
                 }
             });
 
@@ -705,6 +1433,14 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                         editorStatus.textContent = `PHP ${currentPHPVersion}`;
                         runButton.disabled = false;
                         output.textContent = 'Ready! Click "Run Code" or press Ctrl+Enter to execute PHP code.';
+                        
+                        // Enable file explorer buttons
+                        newFileButton.disabled = false;
+                        newFolderButton.disabled = false;
+                        refreshFilesButton.disabled = false;
+                        
+                        // Initialize file tree
+                        refreshFileTree();
                     } else {
                         setTimeout(checkReady, 100);
                     }

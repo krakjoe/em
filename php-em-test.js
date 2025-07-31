@@ -406,15 +406,15 @@ class EmTestRunner {
                     
                     if (expectedArray.length !== actual.length) {
                         throw new Error(message ||
-                            `Array lengths differ: expected
-                                ${expectedArray.length}, got ${actual.length}`);
+                            `Array lengths differ: expected [${expectedArray}] `+
+                                `${expectedArray.length}, got ${actual.length}, [${actual}]`);
                     }
 
                     for (let i = 0; i < expectedArray.length; i++) {
                         if (expectedArray[i] !== actual[i]) {
                             throw new Error(message ||
-                                `Arrays differ at index ${i}: expected 
-                                    ${expectedArray[i]}, got ${actual[i]}`);
+                                `Arrays differ at index ${i}: expected [${expectedArray}] `+
+                                    `${expectedArray[i]}, got [${actual[i]}]`);
                         }
                     }
                 },

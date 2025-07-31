@@ -128,7 +128,7 @@ static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstr
 
     if (strchr(mode, 'r')) {
         if (node && node->kind == EM_VFS_FILE) {
-            abstract->node = node;
+            abstract->node = em_vfs_node_copy(node);
             abstract->maximum = node->data.file.size;
             abstract->data = pecalloc(
                 sizeof(char), abstract->maximum, 1);
@@ -150,7 +150,7 @@ static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstr
             return FAILURE;
         }
 
-        abstract->node = node;
+        abstract->node = em_vfs_node_copy(node);
         abstract->maximum = 8192;
         abstract->data = pecalloc(sizeof(char), abstract->maximum, 1);
         abstract->length = 0;
@@ -232,6 +232,8 @@ static void em_vfs_abstract_release(em_vfs_abstract_t* abstract) {
     if (abstract->data) {
         pefree(abstract->data, 1);
     }
+
+    em_vfs_node_release(abstract->node);
 
     pefree(abstract, 1);
 }
@@ -397,7 +399,7 @@ static int em_vfs_wrapper_rename(
     const char* from,
     const char* to,
     int options, php_stream_context* context) {
-    return 0;
+    return em_vfs_move(from, to);
 }
 
 static php_stream_wrapper_ops em_vfs_wrapper_ops = {
@@ -423,7 +425,7 @@ void em_vfs_startup(void) {
     em_vfs->name = pestrdup("/", 1);
     em_vfs->parent = NULL;
     em_vfs->data.dir.created = time(NULL);
-
+    em_vfs->refcount = 1;
     zend_hash_init(
         &em_vfs->data.dir.children, 8,
         NULL, em_vfs_node_dtor, 1);
@@ -484,9 +486,9 @@ void* EMSCRIPTEN_KEEPALIVE
 
     em_vfs_node_t* parent =
         em_vfs_resolve(vpath, false);
-    em_vfs_path_release(vpath);
 
     if (!parent) {
+        em_vfs_path_release(vpath);
         return NULL;
     }
 
@@ -494,6 +496,7 @@ void* EMSCRIPTEN_KEEPALIVE
         zend_hash_str_find_ptr(
             &parent->data.dir.children,
             vpath->filename, strlen(vpath->filename));
+    em_vfs_path_release(vpath);
 
     if (node->kind == EM_VFS_DIR) {
         return NULL;
@@ -601,6 +604,94 @@ bool EMSCRIPTEN_KEEPALIVE
         em_vfs_resolve(vpath, true);
     em_vfs_path_release(vpath);
     return node != NULL;
+}
+
+bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
+    em_vfs_path_t* from_path = em_vfs_mkpath(from);
+    em_vfs_path_t* to_path = em_vfs_mkpath(to);
+    
+    if (!from_path || !to_path) {
+        if (from_path) em_vfs_path_release(from_path);
+        if (to_path) em_vfs_path_release(to_path);
+        return false;
+    }
+    
+    // Can't move root or empty filenames
+    if (!from_path->filename || strlen(from_path->filename) == 0 ||
+        !to_path->filename || strlen(to_path->filename) == 0) {
+        em_vfs_path_release(from_path);
+        em_vfs_path_release(to_path);
+        return false;
+    }
+    
+    // Get source parent and node
+    em_vfs_node_t* from_parent = em_vfs_resolve(from_path, false);
+    if (!from_parent || from_parent->kind != EM_VFS_DIR) {
+        em_vfs_path_release(from_path);
+        em_vfs_path_release(to_path);
+        return false;
+    }
+    
+    em_vfs_node_t* node = zend_hash_str_find_ptr(
+        &from_parent->data.dir.children,
+        from_path->filename, strlen(from_path->filename));
+    
+    if (!node) {
+        em_vfs_path_release(from_path);
+        em_vfs_path_release(to_path);
+        return false;
+    }
+    
+    // Get destination parent (create if needed)
+    em_vfs_node_t* to_parent = em_vfs_resolve(to_path, true);
+    if (!to_parent || to_parent->kind != EM_VFS_DIR) {
+        em_vfs_path_release(from_path);
+        em_vfs_path_release(to_path);
+        return false;
+    }
+    
+    // Check if destination already exists
+    em_vfs_node_t* existing = zend_hash_str_find_ptr(
+        &to_parent->data.dir.children,
+        to_path->filename, strlen(to_path->filename));
+    
+    if (existing) {
+        em_vfs_path_release(from_path);
+        em_vfs_path_release(to_path);
+        return false;
+    }
+    
+    // Update the node's name and parent
+    if (node->name) {
+        pefree(node->name, 1);
+    }
+    node->name = pestrdup(to_path->filename, 1);
+
+    // Update parent reference
+    if (node->parent) {
+        em_vfs_node_release(node->parent);
+    }
+    node->parent = em_vfs_node_copy(to_parent);
+    
+    // Add to destination parent (this increments refcount via hash table)
+    zend_hash_str_add_ptr(
+        &to_parent->data.dir.children,
+        to_path->filename, strlen(to_path->filename), node);
+
+    // Remove from source parent (this decrements refcount via destructor)
+    zend_hash_str_del(
+        &from_parent->data.dir.children,
+        from_path->filename, strlen(from_path->filename));
+    
+    // Update modification time if it's a file
+    if (node->kind == EM_VFS_FILE) {
+        node->data.file.modified = time(NULL);
+    }
+    
+    em_vfs_path_release(from_path);
+    em_vfs_path_release(to_path);
+    
+    return true;
 }
 
 void EMSCRIPTEN_KEEPALIVE

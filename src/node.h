@@ -30,6 +30,7 @@ typedef enum _em_vfs_node_kind_t {
 } em_vfs_node_kind_t;
 
 struct _em_vfs_node_t {
+    uint32_t refcount;
     em_vfs_node_kind_t kind;
     char* name; 
 
@@ -56,6 +57,12 @@ em_vfs_node_t* em_vfs_node_mkfile(
     em_vfs_node_t* parent, const char* name);
 em_vfs_node_t* em_vfs_node_mkdir(
     em_vfs_node_t* parent, const char* name);
+static em_vfs_node_t*
+    em_vfs_node_copy(
+        em_vfs_node_t* node) {
+    node->refcount++;
+    return node;
+}
 void em_vfs_node_release(em_vfs_node_t* node);
 
 void em_vfs_node_dtor(zval *zv);
