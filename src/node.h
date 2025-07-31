@@ -32,7 +32,7 @@ typedef enum _em_vfs_node_kind_t {
 struct _em_vfs_node_t {
     uint32_t refcount;
     em_vfs_node_kind_t kind;
-    char* name; 
+    char* name;
 
     union {
         struct {

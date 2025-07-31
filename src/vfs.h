@@ -59,4 +59,18 @@ ssize_t EMSCRIPTEN_KEEPALIVE
 void EMSCRIPTEN_KEEPALIVE em_vfs_reset(void);
 
 em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make);
+
+em_vfs_abstract_t* em_vfs_open(const char* path, const char* mode);
+ssize_t em_vfs_read_offset(em_vfs_abstract_t* abstract, char* buffer, size_t count, size_t offset);
+ssize_t em_vfs_write_offset(em_vfs_abstract_t* abstract, const char* buffer, size_t count, size_t offset);
+static inline ssize_t em_vfs_read(em_vfs_abstract_t* abstract, char* buffer, size_t count) {
+    return em_vfs_read_offset(abstract, buffer, count, abstract->position);
+}
+static inline ssize_t em_vfs_write(em_vfs_abstract_t* abstract, const char* buffer, size_t count) {
+    return em_vfs_write_offset(abstract, buffer, count, abstract->position);
+}
+ssize_t em_vfs_truncate(em_vfs_abstract_t* abstract, size_t count);
+ssize_t em_vfs_flush(em_vfs_abstract_t* abstract);
+void em_vfs_close(em_vfs_abstract_t* abstract, bool sync);
+void em_vfs_release(em_vfs_abstract_t* abstract);
 #endif

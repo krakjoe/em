@@ -29,11 +29,17 @@
 #include <php_main.h>
 #include <zend_exceptions.h>
 #include <ext/standard/php_filestat.h>
+#include <sys/types.h>
 
 #include "node.h"
 #include "path.h"
 #include "dir.h"
 #include "vfs.h"
+
+#ifdef HAVE_EM_SQLITE_VFS
+extern void em_sqlite_vfs_register(void);
+extern void em_sqlite_vfs_unregister(void);
+#endif
 
 static php_stream_wrapper em_vfs_wrapper;
 static php_stream_ops     em_vfs_ops;
@@ -113,9 +119,13 @@ static zend_result em_vfs_stat(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bo
     return em_vfs_node_stat(node, ssb, link);
 }
 
-static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstract_t* abstract) {
+ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstract_t* abstract) {
+    // Determine mode flags
+    bool want_read = strchr(mode, 'r') != NULL;
+    bool want_write = strchr(mode, 'w') != NULL;
+
     // Resolve parent directory (create if needed for write mode)
-    em_vfs_node_t* parent = em_vfs_resolve(vpath, strchr(mode, 'w') != NULL);
+    em_vfs_node_t* parent = em_vfs_resolve(vpath, want_write);
     if (!parent || parent->kind != EM_VFS_DIR) {
         return FAILURE;
     }
@@ -126,7 +136,8 @@ static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstr
             &parent->data.dir.children,
             vpath->filename, strlen(vpath->filename));
 
-    if (strchr(mode, 'r')) {
+    if (want_read && !want_write) {
+        // Read-only
         if (node && node->kind == EM_VFS_FILE) {
             abstract->node = em_vfs_node_copy(node);
             abstract->maximum = node->data.file.size;
@@ -138,73 +149,104 @@ static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstr
             abstract->length = node->data.file.size;
             return abstract->length;
         }
-
         return FAILURE;
-    } 
+    }
 
-    if (strchr(mode, 'w')) {
+    if (want_write) {
+        // Write or read/write
         if (!node) {
             node = em_vfs_node_mkfile(parent, vpath->filename);
         }
         if (!node) {
             return FAILURE;
         }
-
         abstract->node = em_vfs_node_copy(node);
-        abstract->maximum = 8192;
-        abstract->data = pecalloc(sizeof(char), abstract->maximum, 1);
-        abstract->length = 0;
+        // If also want_read and file exists, load content; else start empty
+        if (want_read && node->data.file.size > 0) {
+            abstract->maximum = node->data.file.size > 8192 ? node->data.file.size : 8192;
+            abstract->data = pecalloc(sizeof(char), abstract->maximum, 1);
+            memcpy(abstract->data, node->data.file.content, node->data.file.size);
+            abstract->length = node->data.file.size;
+        } else {
+            abstract->maximum = 8192;
+            abstract->data = pecalloc(sizeof(char), abstract->maximum, 1);
+            abstract->length = 0;
+        }
         return SUCCESS;
     }
 
     return FAILURE;
 }
 
-static ssize_t em_vfs_write(em_vfs_abstract_t* abstract, const char* buffer, size_t count) {
-    if ((abstract->position + count) > abstract->maximum) {
-        size_t maximum = abstract->maximum, old_max = maximum;
-        while (maximum < (abstract->position + count)) {
+ssize_t em_vfs_truncate(em_vfs_abstract_t* abstract, size_t count) {
+    if (!abstract) {
+        return -1;
+    }
+    if (count == abstract->length) {
+        return count;
+    }
+    if (count < abstract->length) {
+        // Shrink: just update length
+        abstract->length = count;
+        if (abstract->position > count) {
+            abstract->position = count;
+        }
+        return count;
+    }
+    // Expand: reallocate if needed, zero-fill new space
+    if (count > abstract->maximum) {
+        size_t maximum = abstract->maximum;
+        while (maximum < count) {
+            maximum *= 2;
+        }
+        abstract->data = perealloc(abstract->data, maximum, 1);
+        abstract->maximum = maximum;
+    }
+    memset(abstract->data + abstract->length, 0, count - abstract->length);
+    abstract->length = count;
+    return count;
+}
+
+ssize_t em_vfs_write_offset(em_vfs_abstract_t* abstract, const char* buffer, size_t count, size_t offset) {
+    if ((offset + count) > abstract->maximum) {
+        size_t maximum = abstract->maximum;
+        while (maximum < (offset + count)) {
             maximum *= 2;  // Double the buffer size
         }
-
         abstract->data = perealloc(
             abstract->data, maximum, 1);
         abstract->maximum = maximum;
     }
 
-    memcpy(abstract->data + abstract->position, buffer, count);
-    abstract->position += count;
-
-    // Update length if we wrote past the end
-    if (abstract->position > abstract->length) {
-        abstract->length = abstract->position;
+    memcpy(abstract->data + offset, buffer, count);
+    // Update position if this write is at/after current position
+    if (offset + count > abstract->position) {
+        abstract->position = offset + count;
     }
-
+    // Update length if we wrote past the end
+    if (offset + count > abstract->length) {
+        abstract->length = offset + count;
+    }
     return count;
 }
 
-static ssize_t em_vfs_read(em_vfs_abstract_t* abstract, char* buffer, size_t count) {
+ssize_t em_vfs_read_offset(em_vfs_abstract_t* abstract, char* buffer, size_t count, size_t offset) {
     // Nothing to read, return failure signal
     if (abstract->length <= 0) {
-        return abstract->length;
+        return 0;
     }
-
-    // Nothing left to read, return EOF
-    if (abstract->position == abstract->length) {
-        return EOF;
+    if (offset >= abstract->length) {
+        return 0;
     }
-
-    /// Too much reading
-    if (count > abstract->length - abstract->position) {
-        count = abstract->length - abstract->position;
+    // Too much reading
+    if (count > abstract->length - offset) {
+        count = abstract->length - offset;
     }
-
-    memcpy(buffer,
-        &abstract->data[abstract->position],
-        count);
-
-    abstract->position += count;
-
+    memcpy(buffer, &abstract->data[offset], count);
+    // Optionally update position if this read is at/after current position
+    if (offset + count > abstract->position) {
+        abstract->position = offset + count;
+    }
     return count;
 }
 
@@ -224,7 +266,7 @@ static ssize_t em_vfs_stream_read(php_stream *stream, char *buffer, size_t count
     return em_vfs_read(abstract, buffer, count);
 }
 
-static void em_vfs_abstract_release(em_vfs_abstract_t* abstract) {
+void em_vfs_release(em_vfs_abstract_t* abstract) {
     if (!abstract) {
         return;
     }
@@ -238,7 +280,7 @@ static void em_vfs_abstract_release(em_vfs_abstract_t* abstract) {
     pefree(abstract, 1);
 }
 
-static void em_vfs_close(em_vfs_abstract_t* abstract) {
+void em_vfs_close(em_vfs_abstract_t* abstract, bool sync) {
     // Save buffer content back to VFS file node
     if (abstract->node &&
         abstract->node->kind == EM_VFS_FILE) {
@@ -251,7 +293,19 @@ static void em_vfs_close(em_vfs_abstract_t* abstract) {
         abstract->node->data.file.content  = abstract->data;
         abstract->node->data.file.size     = abstract->length;
         abstract->node->data.file.modified = time(NULL);
-        
+
+        if (sync) {
+            // Perform sync
+            abstract->length   = abstract->node->data.file.size;
+            abstract->data     = pecalloc(
+                sizeof(char), abstract->length, 1);
+            memcpy(abstract->data,
+                abstract->node->data.file.content,
+                abstract->length);
+            abstract->position = 0;
+            return;
+        }
+
         // Don't double free this
         abstract->data = NULL;
     }
@@ -264,8 +318,8 @@ static int em_vfs_stream_close(php_stream *stream, int type) {
     // We never used this, points at garbage
     stream->orig_path = NULL;
 
-    em_vfs_close(abstract);
-    em_vfs_abstract_release(abstract);
+    em_vfs_close(abstract, false);
+    em_vfs_release(abstract);
 
     return 0;
 }
@@ -330,10 +384,9 @@ static php_stream_ops em_vfs_ops = {
     NULL                   // set_option
 };
 
-static php_stream *em_vfs_wrapper_open(php_stream_wrapper *wrapper, 
-                                  const char *path, const char *mode,
-                                  int options, zend_string **opened_path,
-                                  php_stream_context *context STREAMS_DC) {
+em_vfs_abstract_t* em_vfs_open(
+    const char* path,
+    const char* mode) {
     em_vfs_path_t* vpath = em_vfs_mkpath(path);
 
     if (!vpath) {
@@ -344,15 +397,22 @@ static php_stream *em_vfs_wrapper_open(php_stream_wrapper *wrapper,
 
     if (em_vfs_mount(
             vpath, mode, abstract) < 0) {
-        em_vfs_abstract_release(abstract);
+        em_vfs_release(abstract);
         em_vfs_path_release(vpath);
         return NULL;
     }
 
     em_vfs_path_release(vpath);
+    return abstract;
+}
 
+static php_stream *em_vfs_wrapper_open(php_stream_wrapper *wrapper, 
+                                  const char *path, const char *mode,
+                                  int options, zend_string **opened_path,
+                                  php_stream_context *context STREAMS_DC) {
+    em_vfs_abstract_t* abstract =
+        em_vfs_open(path, mode);
     *opened_path = zend_string_init(path, strlen(path), 0);
-
     return php_stream_alloc(&em_vfs_ops, abstract, 0, mode);
 }
 
@@ -420,6 +480,9 @@ static php_stream_wrapper em_vfs_wrapper = {
 };
 
 void em_vfs_startup(void) {
+#ifdef HAVE_EM_SQLITE_VFS
+    em_sqlite_vfs_register();
+#endif
     em_vfs = pecalloc(1, sizeof(em_vfs_node_t), 1);
     em_vfs->kind = EM_VFS_DIR;
     em_vfs->name = pestrdup("/", 1);
@@ -445,6 +508,10 @@ void em_vfs_shutdown(void) {
     }
 
     em_vfs_node_release(em_vfs);
+
+#ifdef HAVE_EM_SQLITE_VFS
+    em_sqlite_vfs_unregister();
+#endif
 }
 
 bool EMSCRIPTEN_KEEPALIVE
@@ -459,7 +526,7 @@ bool EMSCRIPTEN_KEEPALIVE
 
     if (em_vfs_mount(
             vpath, "w", abstract) < 0) {
-        em_vfs_abstract_release(abstract);
+        em_vfs_release(abstract);
         em_vfs_path_release(vpath);
         return false;
     }
@@ -467,12 +534,12 @@ bool EMSCRIPTEN_KEEPALIVE
     em_vfs_path_release(vpath);
 
     if (em_vfs_write(abstract, data, length) < 0) {
-        em_vfs_abstract_release(abstract);
+        em_vfs_release(abstract);
         return false;
     }
 
-    em_vfs_close(abstract);
-    em_vfs_abstract_release(abstract);
+    em_vfs_close(abstract, false);
+    em_vfs_release(abstract);
     return true;
 }
 
@@ -515,9 +582,9 @@ ssize_t EMSCRIPTEN_KEEPALIVE
 
     em_vfs_node_t* parent =
         em_vfs_resolve(vpath, false);
-    em_vfs_path_release(vpath);
 
     if (!parent) {
+        em_vfs_path_release(vpath);
         return -1;
     }
 
@@ -525,6 +592,7 @@ ssize_t EMSCRIPTEN_KEEPALIVE
         zend_hash_str_find_ptr(
             &parent->data.dir.children,
             vpath->filename, strlen(vpath->filename));
+    em_vfs_path_release(vpath);
 
     if (node->kind == EM_VFS_DIR) {
         return -1;

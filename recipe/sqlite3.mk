@@ -20,7 +20,10 @@ EM_SQLITE3_LIB   = $(EM_SQLITE3_SRC)/lib/libsqlite3.a
 EM_SQLITE3_INC   = $(EM_SQLITE3_SRC)/include
 ########################################################################
 EM_SQLITE3_OPTS      ?=
-EM_SQLITE3_CFLAGS    ?=
+EM_SQLITE3_CFLAGS    :=
+EM_SQLITE3_CFLAGS    += -DSQLITE_ENABLE_JSON1
+EM_SQLITE3_CFLAGS    += -DSQLITE_ENABLE_RTREE
+EM_SQLITE3_CFLAGS    ?= -DSQLITE_ENABLE_FTS5
 EM_SQLITE3_LDFLAGS   ?=
 EM_SQLITE3_CONFIGURE ?= --with-sqlite3=static,$(EM_SQLITE3_SRC)
 ########################################################################
@@ -71,6 +74,9 @@ clean-sqlite3:
 $(eval $(call EM_RECIPE_ADD_CONFIGURE, $(EM_SQLITE3_CONFIGURE)))
 $(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_SQLITE3_LIB)))
 $(eval $(call EM_RECIPE_ADD_LIB,       $(EM_SQLITE3_LIB)))
+$(eval $(call EM_RECIPE_ADD_CFLAGS,    -I$(EM_SQLITE3_SRC)/include))
+$(eval $(call EM_RECIPE_ADD_CFLAGS,    -DHAVE_EM_SQLITE_VFS))
+$(eval $(call EM_RECIPE_ADD_LINK,      $(EM_RECIPE_STUBS)/sqlite3.c))
 $(eval $(call EM_RECIPE_ADD_CLEANER,   clean-sqlite3))
 ########################################################################
 # Export for php

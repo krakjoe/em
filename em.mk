@@ -137,37 +137,37 @@ $(EM_PHP_DIR)/.libs/libphp.a: $(EM_PHP_DIR)/.libs/libphp.a.stamp
 
 $(EM_SRC_DIR)/http.lo: $(EM_SRC_DIR)/http.c $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/http.c -o $(EM_SRC_DIR)/http.lo
 
 $(EM_SRC_DIR)/node.lo: $(EM_SRC_DIR)/node.c $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/node.c -o $(EM_SRC_DIR)/node.lo
 
 $(EM_SRC_DIR)/path.lo: $(EM_SRC_DIR)/path.c $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/path.c -o $(EM_SRC_DIR)/path.lo
 
 $(EM_SRC_DIR)/dir.lo: $(EM_SRC_DIR)/dir.c $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/dir.c -o $(EM_SRC_DIR)/dir.lo
 
 $(EM_SRC_DIR)/vfs.lo: $(EM_SRC_DIR)/vfs.c $(EM_SRC_DIR)/dir.lo $(EM_SRC_DIR)/node.lo $(EM_SRC_DIR)/path.lo $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/vfs.c -o $(EM_SRC_DIR)/vfs.lo
 
 $(EM_SRC_DIR)/iterator.lo: $(EM_SRC_DIR)/iterator.c $(EM_SRC_DIR)/vfs.lo
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/iterator.c -o $(EM_SRC_DIR)/iterator.lo
 
 $(EM_SRC_DIR)/api.lo: $(EM_SRC_DIR)/api.c $(EM_SRC_DIR)/http.lo $(EM_SRC_DIR)/vfs.lo $(EM_SRC_DIR)/iterator.lo $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/api.c -o $(EM_SRC_DIR)/api.lo
 
 build: $(EM_PHP_DIR)/.libs/libphp.a

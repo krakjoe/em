@@ -51,8 +51,10 @@ em_vfs_node_t* em_vfs_node_mkfile(em_vfs_node_t* parent, const char* name) {
     file->kind = EM_VFS_FILE;
     file->name = pestrdup(name, 1);
     file->parent = em_vfs_node_copy(parent);
-    file->data.file.created = time(NULL);
+    file->data.file.created  = time(NULL);
     file->data.file.modified = time(NULL);
+    file->data.file.size     = 0;
+    file->data.file.content  = NULL;
     zend_hash_str_add_ptr(
         &parent->data.dir.children,
         name, strlen(name), file);
