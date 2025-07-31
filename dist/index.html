@@ -830,15 +830,20 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                 return;
             }
 
+            let iterator = null;
+
             try {
-                const iterator = Module.vfs.iterate('vfs://');
-                const files = iterator.all(true);
-                iterator.free();
-                
+                iterator = Module.vfs.iterate('/');
+                const files =
+                    iterator.all(true);
                 renderFileTree(files);
             } catch (error) {
                 console.error('Error refreshing file tree:', error);
                 updateStatus('Error refreshing file tree', 'error');
+            } finally {
+                if (iterator) {
+                    iterator.free();
+                }
             }
         }
 
@@ -1082,13 +1087,13 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                 return;
             }
 
-            const path = 'vfs://' + filename;
-            
             try {
-                const success = Module.vfs.put(path, '<?php\n// New PHP file\necho "Hello from ' + filename + '!";\n?>');
+                const success = Module.vfs.put(
+                    filename, 
+                    '<?php\n// New PHP file\necho "Hello from ' + filename + '!";\n?>');
                 if (success) {
                     refreshFileTree();
-                    openFile(path);
+                    openFile(filename);
                     updateStatus(`Created: ${filename}`, 'success');
                 } else {
                     updateStatus(`Failed to create: ${filename}`, 'error');
@@ -1113,8 +1118,9 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                 return;
             }
 
-            const path = 'vfs://' + foldername;
-            
+            const path = foldername.endsWith("/") ?
+                foldername : foldername + "/";
+
             try {
                 const success = Module.vfs.mkdir(path);
                 if (success) {
