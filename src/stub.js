@@ -210,6 +210,11 @@ Module.vfs = {
     EM_VFS_FILE: 2,
 
     /**
+     * Shall provide encoding services
+     */
+    encoder: new TextEncoder(),
+
+    /**
      * Shall write file contents to the filesystem
      * @param {string} path 
      * @param {string} contents 
@@ -284,7 +289,7 @@ Module.vfs = {
      */
     mkdir: function(path) {
         return Module.ccall('em_vfs_mkdir', 'bool',
-            ['string' ],
+            [ 'string' ],
             [ path ]);
     },
 

@@ -1064,7 +1064,6 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
 
         function hideContextMenu() {
             contextMenu.style.display = 'none';
-            currentContextPath = null;
         }
 
         function showModal(title, placeholder, action) {
@@ -1072,6 +1071,18 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
             modalInput.placeholder = placeholder;
             modalInput.value = '';
             currentModalAction = action;
+            // Set modalOk button text based on action
+            switch (action) {
+                case 'file':
+                case 'folder':
+                    modalOk.textContent = 'Create';
+                    break;
+                case 'rename':
+                    modalOk.textContent = 'Rename';
+                    break;
+                default:
+                    modalOk.textContent = 'OK';
+            }
             fileModal.style.display = 'block';
             modalInput.focus();
         }
@@ -1186,7 +1197,9 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
         }
 
         function performRename() {
-            if (!currentContextPath) return;
+            if (!currentContextPath) {
+                return;
+            }
 
             const newName = modalInput.value.trim();
             if (!newName) {
@@ -1211,17 +1224,14 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                         currentOpenFile = newPath;
                         updateCurrentFileDisplay();
                     }
-                    
                     refreshFileTree();
                     updateStatus(`Renamed to: ${newName}`, 'success');
                 } else {
                     updateStatus(`Failed to rename: ${currentContextPath}`, 'error');
                 }
             } catch (error) {
-                console.error('Error renaming file:', error);
                 updateStatus(`Error renaming: ${currentContextPath}`, 'error');
             }
-            
             hideModal();
         }
 
@@ -1250,7 +1260,9 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
 
             // Modal event handlers
             modalCancel.addEventListener('click', hideModal);
-            modalOk.addEventListener('click', () => {
+            modalOk.addEventListener('click', function handleModalOk() {
+                const modalVisible = window.getComputedStyle(fileModal).display !== 'none';
+                if (!modalVisible || !currentModalAction) return;
                 switch (currentModalAction) {
                     case 'file':
                         createFile();
@@ -1277,8 +1289,10 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
             
             contextMenu.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const action = e.target.dataset.action;
-                
+                // Ensure we get the correct menu item even if a child is clicked
+                const item = e.target.closest('.context-menu-item');
+                if (!item) return;
+                const action = item.dataset.action;
                 switch (action) {
                     case 'open':
                         openFile(currentContextPath);
@@ -1290,7 +1304,6 @@ echo "Coordinates: ({$point->x}, {$point->y})\\n";
                         deleteFile();
                         break;
                 }
-                
                 hideContextMenu();
             });
 

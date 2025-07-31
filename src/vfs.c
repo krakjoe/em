@@ -679,13 +679,13 @@ bool EMSCRIPTEN_KEEPALIVE
 bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
     em_vfs_path_t* from_path = em_vfs_mkpath(from);
     em_vfs_path_t* to_path = em_vfs_mkpath(to);
-    
+
     if (!from_path || !to_path) {
         if (from_path) em_vfs_path_release(from_path);
         if (to_path) em_vfs_path_release(to_path);
         return false;
     }
-    
+
     // Can't move root or empty filenames
     if (!from_path->filename || strlen(from_path->filename) == 0 ||
         !to_path->filename || strlen(to_path->filename) == 0) {
@@ -693,7 +693,7 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
         em_vfs_path_release(to_path);
         return false;
     }
-    
+
     // Get source parent and node
     em_vfs_node_t* from_parent = em_vfs_resolve(from_path, false);
     if (!from_parent || from_parent->kind != EM_VFS_DIR) {
@@ -719,7 +719,7 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
         em_vfs_path_release(to_path);
         return false;
     }
-    
+
     // Check if destination already exists
     em_vfs_node_t* existing = zend_hash_str_find_ptr(
         &to_parent->data.dir.children,
@@ -730,7 +730,7 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
         em_vfs_path_release(to_path);
         return false;
     }
-    
+
     // Update the node's name and parent
     if (node->name) {
         pefree(node->name, 1);
@@ -743,12 +743,13 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
     }
     node->parent = em_vfs_node_copy(to_parent);
     
-    // Add to destination parent (this increments refcount via hash table)
+    // Add to destination parent
     zend_hash_str_add_ptr(
         &to_parent->data.dir.children,
-        to_path->filename, strlen(to_path->filename), node);
+        to_path->filename, strlen(to_path->filename),
+        em_vfs_node_copy(node));
 
-    // Remove from source parent (this decrements refcount via destructor)
+    // Remove from source parent
     zend_hash_str_del(
         &from_parent->data.dir.children,
         from_path->filename, strlen(from_path->filename));
