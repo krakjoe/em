@@ -426,11 +426,17 @@ Module.vfs = {
         /**
          * Shall return the modified timestamp for the node currently being visited
          * @returns Date
+         * Directories do not have modified timestamps
          */
         modified() {
             if (!this.iterator) {
                 throw new Error("invalid iterator");
             }
+
+            if (this.kind() != Module.vfs.EM_VFS_FILE) {
+                throw new Error("invalid call");
+            }
+
             let time = Module.ccall(
                 'em_vfs_iterator_modified', 'bigint',
                 [ 'number' ],
