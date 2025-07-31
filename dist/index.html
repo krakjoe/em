@@ -95,6 +95,16 @@
             font-size: 0.8rem;
         }
 
+        @media (max-width: 480px) {
+            .explorer-controls {
+                flex-wrap: wrap;
+            }
+            .explorer-controls button {
+                padding: 0.2rem 0.4rem;
+                font-size: 0.7rem;
+            }
+        }
+
         .file-tree {
             flex: 1;
             overflow-y: auto;
@@ -373,6 +383,8 @@
                     <button id="newFile" title="New File">📄</button>
                     <button id="newFolder" title="New Folder">📁</button>
                     <button id="refreshFiles" title="Refresh">🔄</button>
+                    <button id="importZip" title="Import ZIP">📦</button>
+                    <button id="exportZip" title="Export ZIP">💾</button>
                 </div>
             </div>
             <div class="file-tree" id="fileTree">
@@ -433,6 +445,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="zip.js"></script>
 
     <script>
         // Get PHP version from URL or default to 8.3
