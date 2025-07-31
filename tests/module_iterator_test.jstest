@@ -1,0 +1,19 @@
+assert(
+    Module,
+    "Module should be defined")
+let it = Module.vfs.iterate("/");
+assert(!it.count(), "iterator should be empty");
+assert(Module.vfs.put("/one/two/three/four.txt", "four.txt"));
+assert(Module.vfs.put("/one/two/three/four", "four"));
+assert(it.reset(), "iterator should reset");
+assertEquals(it.count(), 1, "iterator should contain one entry");
+assertEquals(it.name(), "one", "iterator should be at /one");
+assertEquals(it.kind(), Module.vfs.EM_VFS_DIR, "/one should be a directory");
+it.free()
+it = Module.vfs.iterate("/one/two/three");
+assertEquals(
+    it.count(),
+    2,
+    "iterator should have two entries, got " + it.count());
+it.free()
+

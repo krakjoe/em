@@ -149,7 +149,6 @@ Module.invoke = function(input, output = undefined) {
     let text = null;
 
     try {
-        // FIXED: Use Emscripten's UTF8ToString instead of TextDecoder
         // This ensures consistent encoding handling
         text = Module.iou.fromBytes(result.address, result.length);
     } catch (exception) {
@@ -202,13 +201,360 @@ Module.shutdown = function() {
 /**
  * Shall provide vfs management
  */
-
 Module.vfs = {
+    /**
+     * Type constants
+     */
+    EM_VFS_INV:  0,
+    EM_VFS_DIR:  1,
+    EM_VFS_FILE: 2,
+
+    /**
+     * Shall write file contents to the filesystem
+     * @param {string} path 
+     * @param {string} contents 
+     * @returns
+     */
+    put: function(path, contents) {
+        return Module.ccall('em_vfs_put', 'bool', [
+            'string',
+            'string', 'number'], [
+            path,
+            contents, Module.lengthBytesUTF8(contents)
+        ]);
+    },
+    /**
+     * Shall retrieve file contents from the filesystem
+     * @param {string} path 
+     * @returns UInt8Array|bool
+     */
+    get: function(path) {
+        let length = Module.ccall(
+            'em_vfs_get_length', 'number', [
+            'string' ], [
+            path
+        ]);
+
+        if (length < 0) {
+            return false;
+        }
+
+        let address = Module.ccall(
+            'em_vfs_get_address', 'number', [
+            'string' ], [
+            path
+        ]);
+
+        let result = new Uint8Array(length);
+        result.set(
+            Module.HEAPU8.subarray(
+                address, address + length));
+        return result;
+    },
+
+    /**
+     * Shall unlink the given path
+     * @param {string} path 
+     * @param {bool} directories 
+     * Shall return false if directories if false and path is a directory
+     */
+    unlink: function(path, directories = false) {
+        return Module.ccall('em_vfs_unlink', 'bool',
+            ['string', 'bool'],
+            [ path, directories ]);
+    },
+
+    /**
+     * Shall create a directory at the given path
+     * @param {string} path
+     * @returns bool 
+     */
+    mkdir: function(path) {
+        return Module.ccall('em_vfs_mkdir', 'bool',
+            ['string' ],
+            [ path ]);
+    },
+
     /**
      * Shall destroy the vfs and recreate it
      */
     reset: function() {
         Module.ccall('em_vfs_reset');
+    },
+
+    /**
+     * Shall return an iterator object for path
+     * @param {string} path 
+     * @returns Iterator
+     */
+    iterate: function(path) {
+        return new this.Iterator(
+            path.endsWith("/") ?
+                path : path + "/")
+    },
+
+    /**
+     * Shall provide iteration for the VFS
+     */
+    Iterator: class {
+        /**
+         * Construct an Iterator for path
+         * @param {string} path 
+         */
+        constructor(path) {
+            this.iterator = Module.ccall(
+                'em_vfs_iterator', 'number', 
+                [ 'string' ],
+                [ path ]);
+            if (!this.iterator) {
+                throw new Error(
+                    "could not start iterator for " + path);
+            }
+            this.path = path;
+        }
+
+        /**
+         * Shall count the number of items in this iterator
+         * @returns number
+         */
+        count() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            return Module.ccall(
+                'em_vfs_iterator_count', 'number',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+        }
+
+        /**
+         * Shall determine the kind of node current being visited
+         * @returns EM_VFS_INV|EM_VFS_DIR|EM_VFS_FILE
+         */
+        kind() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            let kind = Module.ccall(
+                'em_vfs_iterator_kind', 'number',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+            if (kind == Module.vfs.EM_VFS_INV) {
+                throw new Error("invalid call");
+            }
+            return kind;
+        }
+
+        /**
+         * Shall return the name of the node currently being visited
+         * @returns string
+         */
+        name() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            let address = Module.ccall(
+                'em_vfs_iterator_name', 'number',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+            if (address < 0) {
+                throw new Error("invalid call")
+            }
+            return Module.UTF8ToString(address);
+        }
+
+        /**
+         * Shall return the address of the content of the node currently being visited
+         * @returns number
+         */
+        address() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            let address = Module.ccall(
+                'em_vfs_iterator_address', 'number',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+            if (address < 0) {
+                throw new Error("invalid call")
+            }
+            return address;
+        }
+
+        /**
+         * Shall return the length of the content of the node currently being visited
+         * @returns number
+         */
+        length() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            let length = Module.ccall(
+                'em_vfs_iterator_length', 'number',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+            if (length < 0) {
+                throw new Error("invalid call");
+            }
+            return length;
+        }
+
+        /**
+         * Shall return the created timestamp for the node currently being visited
+         * @returns Date
+         */
+        created() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            let time = Module.ccall(
+                'em_vfs_iterator_created', 'bigint',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+            if (time < 0) {
+                throw new Error("invalid call")
+            }
+            return new Date(new Number(time) * 1000);
+        }
+
+        /**
+         * Shall return the modified timestamp for the node currently being visited
+         * @returns Date
+         */
+        modified() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            let time = Module.ccall(
+                'em_vfs_iterator_modified', 'bigint',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+            if (time < 0) {
+                throw new Error("invalid call")
+            }
+            return new Date(new Number(time) * 1000);
+        }
+
+        /**
+         * Shall reset the iterator to the root of the current directory
+         * @returns bool
+         */
+        reset() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            return Module.ccall(
+                'em_vfs_iterator_reset', 'bool',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+        }
+
+        /**
+         * Shall move the iterator forward
+         * @returns bool
+         */
+        next() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            return Module.ccall(
+                'em_vfs_iterator_next', 'bool',
+                [ 'number' ],
+                [ this.iterator ]
+            );
+        }
+
+        /**
+         * Shall iterate through the current directory with optional recursion
+         * and return a dictionary for each entry:
+         * 
+         * { 
+         *  name: name,
+         *  kind: kind,
+         *  created: created,
+         *  modified: modified, # files only
+         *  address: address, #files only
+         *  length: length, #files only
+         *  children: children, #directories only depends on recursive parameter 
+         * }
+         * 
+         * @param {bool} recursive 
+         * @returns object
+         */
+        all(recursive) {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+
+            let tree = [];
+
+            if (!this.reset()) {
+                return tree;
+            }
+
+            do {
+                let children = [];
+
+                if (recursive &&
+                    this.kind() == Module.vfs.EM_VFS_DIR) {
+                    let path = 
+                        this.path.endsWith("/") ?
+                            this.path + this.name() :
+                            this.path + "/" + this.name();
+                    children = Module.vfs
+                        .iterate(path + "/")
+                            .all(true);
+                }
+
+                try {
+                    tree.push({
+                        name:     this.name(),
+                        kind:     this.kind(),
+                        created:  this.created(),
+                        ...(this.kind() == Module.vfs.EM_VFS_FILE ? {
+                            modified: this.modified(),
+                            address:  this.address(),
+                            length:   this.length()
+                        } : {}),
+                        ...(children.length ? { 
+                            children: children 
+                        } : {}),
+                    });
+                } finally {
+                    if (children instanceof Module.vfs.Iterator) {
+                        children.free();
+                    }
+                }
+            } while (this.next());
+
+            this.reset();
+
+            return tree;
+        }
+
+        /**
+         * Shall free the iterator
+         * !important!
+         */
+        free() {
+            if (!this.iterator) {
+                throw new Error("invalid iterator");
+            }
+            Module.ccall(
+                'em_vfs_iterator_free',
+                'number',
+                [ 'number' ],
+                [ this.iterator ]);
+            this.iterator = null;
+        }
     }
 };
 

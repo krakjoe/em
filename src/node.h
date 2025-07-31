@@ -24,8 +24,9 @@
 typedef struct _em_vfs_node_t em_vfs_node_t;
 
 typedef enum _em_vfs_node_kind_t {
-    EM_VFS_DIR,
-    EM_VFS_FILE,
+    EM_VFS_INV  = 0,
+    EM_VFS_DIR  = 1,
+    EM_VFS_FILE = 2,
 } em_vfs_node_kind_t;
 
 struct _em_vfs_node_t {

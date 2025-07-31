@@ -1,0 +1,9 @@
+assert(Module, "Module should be defined")
+assert(Module.vfs.put("test", "content"))
+assertArray([
+    99,111,110,116,101,110,116
+], Module.vfs.get("test"))
+assert(Module.vfs.unlink("test"),
+    "unlink should return first time")
+assert(!Module.vfs.unlink("test"),
+    "unlink should return false second time")

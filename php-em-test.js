@@ -387,6 +387,37 @@ class EmTestRunner {
                         throw new Error(message || `Expected '${expected}', got '${actual}'`);
                     }
                 },
+                assertArray: (expected, actual, message) => {
+                    if (!actual && !expected) {
+                        return;
+                    }
+
+                    if (!actual || !expected) {
+                        throw new Error(message || `Expected array, got ${actual}`);
+                    }
+                    const expectedArray =
+                        expected instanceof Uint8Array ?
+                            expected : new Uint8Array(expected);
+                    
+                    if (!(actual instanceof Uint8Array)) {
+                        throw new Error(message || 
+                            `Expected Uint8Array, got ${typeof actual}`);
+                    }
+                    
+                    if (expectedArray.length !== actual.length) {
+                        throw new Error(message ||
+                            `Array lengths differ: expected
+                                ${expectedArray.length}, got ${actual.length}`);
+                    }
+
+                    for (let i = 0; i < expectedArray.length; i++) {
+                        if (expectedArray[i] !== actual[i]) {
+                            throw new Error(message ||
+                                `Arrays differ at index ${i}: expected 
+                                    ${expectedArray[i]}, got ${actual[i]}`);
+                        }
+                    }
+                },
                 console: captureConsole
             };
             
@@ -396,12 +427,14 @@ class EmTestRunner {
                 'assert',
                 'assertEquals',
                 'assertContains',
+                'assertArray',
                 'console',
                 content);
             const result = testFunction(testContext.Module,
                 testContext.assert,
                 testContext.assertEquals,
                 testContext.assertContains,
+                testContext.assertArray,
                 testContext.console);
             
             // Return captured output if any, otherwise result

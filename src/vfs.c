@@ -38,14 +38,6 @@
 static php_stream_wrapper em_vfs_wrapper;
 static php_stream_ops     em_vfs_ops;
 
-typedef struct _em_vfs_abstract_t {
-    char*               data;
-    ssize_t             length;
-    size_t              position;
-    size_t              maximum;
-    em_vfs_node_t*      node;
-} em_vfs_abstract_t;
-
 static em_vfs_node_t* em_vfs = NULL;
 
 em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
@@ -168,11 +160,7 @@ static ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstr
     return FAILURE;
 }
 
-static ssize_t em_vfs_stream_write(php_stream* stream, const char*buffer, size_t count) {
-    em_vfs_abstract_t* abstract =
-        (em_vfs_abstract_t*)
-            stream->abstract;
-
+static ssize_t em_vfs_write(em_vfs_abstract_t* abstract, const char* buffer, size_t count) {
     if ((abstract->position + count) > abstract->maximum) {
         size_t maximum = abstract->maximum, old_max = maximum;
         while (maximum < (abstract->position + count)) {
@@ -195,11 +183,7 @@ static ssize_t em_vfs_stream_write(php_stream* stream, const char*buffer, size_t
     return count;
 }
 
-static ssize_t em_vfs_stream_read(php_stream *stream, char *buffer, size_t count) {
-    em_vfs_abstract_t* abstract =
-        (em_vfs_abstract_t*)
-            stream->abstract;
-
+static ssize_t em_vfs_read(em_vfs_abstract_t* abstract, char* buffer, size_t count) {
     // Nothing to read, return failure signal
     if (abstract->length <= 0) {
         return abstract->length;
@@ -224,6 +208,22 @@ static ssize_t em_vfs_stream_read(php_stream *stream, char *buffer, size_t count
     return count;
 }
 
+static ssize_t em_vfs_stream_write(php_stream* stream, const char*buffer, size_t count) {
+    em_vfs_abstract_t* abstract =
+        (em_vfs_abstract_t*)
+            stream->abstract;
+
+    return em_vfs_write(abstract, buffer, count);
+}
+
+static ssize_t em_vfs_stream_read(php_stream *stream, char *buffer, size_t count) {
+    em_vfs_abstract_t* abstract =
+        (em_vfs_abstract_t*)
+            stream->abstract;
+
+    return em_vfs_read(abstract, buffer, count);
+}
+
 static void em_vfs_abstract_release(em_vfs_abstract_t* abstract) {
     if (!abstract) {
         return;
@@ -236,10 +236,7 @@ static void em_vfs_abstract_release(em_vfs_abstract_t* abstract) {
     pefree(abstract, 1);
 }
 
-static int em_vfs_stream_close(php_stream *stream, int type) {
-    em_vfs_abstract_t* abstract =
-        (em_vfs_abstract_t*) stream->abstract;
-
+static void em_vfs_close(em_vfs_abstract_t* abstract) {
     // Save buffer content back to VFS file node
     if (abstract->node &&
         abstract->node->kind == EM_VFS_FILE) {
@@ -256,11 +253,18 @@ static int em_vfs_stream_close(php_stream *stream, int type) {
         // Don't double free this
         abstract->data = NULL;
     }
+}
+
+static int em_vfs_stream_close(php_stream *stream, int type) {
+    em_vfs_abstract_t* abstract =
+        (em_vfs_abstract_t*) stream->abstract;
 
     // We never used this, points at garbage
     stream->orig_path = NULL;
 
+    em_vfs_close(abstract);
     em_vfs_abstract_release(abstract);
+
     return 0;
 }
 
@@ -383,59 +387,9 @@ static int em_vfs_wrapper_stat_uri(
 
 static int em_vfs_wrapper_unlink(
     php_stream_wrapper* wrapper,
-    const char* url,
+    const char* path,
     int options, php_stream_context* context) {
-    
-    // Parse the path
-    em_vfs_path_t* vpath = em_vfs_mkpath(url);
-    if (!vpath) {
-        return 0;
-    }
-
-    // Can't unlink empty filename or root
-    if (!vpath->filename || strlen(vpath->filename) == 0) {
-        em_vfs_path_release(vpath);
-        return 0;
-    }
-
-    // Resolve parent directory
-    em_vfs_node_t* parent = em_vfs_resolve(vpath, false);
-    if (!parent || parent->kind != EM_VFS_DIR) {
-        em_vfs_path_release(vpath);
-        return 0;
-    }
-
-    // Check if file exists in parent directory
-    em_vfs_node_t* node = zend_hash_str_find_ptr(
-        &parent->data.dir.children,
-        vpath->filename, strlen(vpath->filename));
-
-    if (!node) {
-        // File doesn't exist
-        em_vfs_path_release(vpath);
-        return 0;
-    }
-
-    // Can only unlink files, not directories
-    if (node->kind != EM_VFS_FILE) {
-        em_vfs_path_release(vpath);
-        return 0;
-    }
-
-    // Remove the file from children hash
-    zend_result result = zend_hash_str_del(
-        &parent->data.dir.children,
-        vpath->filename, strlen(vpath->filename));
-
-    em_vfs_path_release(vpath);
-
-    if (result == SUCCESS) {
-        php_clear_stat_cache(0,
-            vpath->filename,
-            strlen(vpath->filename));
-    }
-
-    return (result == SUCCESS);
+    return em_vfs_unlink(path, false);
 }
 
 static int em_vfs_wrapper_rename(
@@ -489,6 +443,164 @@ void em_vfs_shutdown(void) {
     }
 
     em_vfs_node_release(em_vfs);
+}
+
+bool EMSCRIPTEN_KEEPALIVE
+    em_vfs_put(const char* path, const char* data, size_t length) {
+    em_vfs_path_t* vpath = em_vfs_mkpath(path);
+
+    if (!vpath) {
+        return NULL;
+    }
+
+    em_vfs_abstract_t* abstract = pecalloc(1, sizeof(em_vfs_abstract_t), 1);
+
+    if (em_vfs_mount(
+            vpath, "w", abstract) < 0) {
+        em_vfs_abstract_release(abstract);
+        em_vfs_path_release(vpath);
+        return false;
+    }
+
+    em_vfs_path_release(vpath);
+
+    if (em_vfs_write(abstract, data, length) < 0) {
+        em_vfs_abstract_release(abstract);
+        return false;
+    }
+
+    em_vfs_close(abstract);
+    em_vfs_abstract_release(abstract);
+    return true;
+}
+
+void* EMSCRIPTEN_KEEPALIVE
+    em_vfs_get_address(const char* path) {
+    em_vfs_path_t* vpath = em_vfs_mkpath(path);
+
+    if (!vpath) {
+        return NULL;
+    }
+
+    em_vfs_node_t* parent =
+        em_vfs_resolve(vpath, false);
+    em_vfs_path_release(vpath);
+
+    if (!parent) {
+        return NULL;
+    }
+
+    em_vfs_node_t* node = (em_vfs_node_t*)
+        zend_hash_str_find_ptr(
+            &parent->data.dir.children,
+            vpath->filename, strlen(vpath->filename));
+
+    if (node->kind == EM_VFS_DIR) {
+        return NULL;
+    }
+
+    return node->data.file.content;
+}
+
+ssize_t EMSCRIPTEN_KEEPALIVE
+    em_vfs_get_length(const char* path) {
+        em_vfs_path_t* vpath = em_vfs_mkpath(path);
+
+    if (!vpath) {
+        return -1;
+    }
+
+    em_vfs_node_t* parent =
+        em_vfs_resolve(vpath, false);
+    em_vfs_path_release(vpath);
+
+    if (!parent) {
+        return -1;
+    }
+
+    em_vfs_node_t* node = (em_vfs_node_t*)
+        zend_hash_str_find_ptr(
+            &parent->data.dir.children,
+            vpath->filename, strlen(vpath->filename));
+
+    if (node->kind == EM_VFS_DIR) {
+        return -1;
+    }
+
+    return node->data.file.size;
+}
+
+bool EMSCRIPTEN_KEEPALIVE em_vfs_unlink(const char* path, bool directories) {
+    // Parse the path
+    em_vfs_path_t* vpath = em_vfs_mkpath(path);
+    if (!vpath) {
+        return 0;
+    }
+
+    // Can't unlink empty filename or root
+    if (!vpath->filename || strlen(vpath->filename) == 0) {
+        em_vfs_path_release(vpath);
+        return 0;
+    }
+
+    // Resolve parent directory
+    em_vfs_node_t* parent = em_vfs_resolve(vpath, false);
+    if (!parent || parent->kind != EM_VFS_DIR) {
+        em_vfs_path_release(vpath);
+        return 0;
+    }
+
+    // Check if file exists in parent directory
+    em_vfs_node_t* node = zend_hash_str_find_ptr(
+        &parent->data.dir.children,
+        vpath->filename, strlen(vpath->filename));
+
+    if (!node) {
+        // File doesn't exist
+        em_vfs_path_release(vpath);
+        return 0;
+    }
+
+    // Can only unlink files, not directories
+    if (!directories && node->kind != EM_VFS_FILE) {
+        em_vfs_path_release(vpath);
+        return 0;
+    }
+
+    // Remove the file from children hash
+    zend_result result = zend_hash_str_del(
+        &parent->data.dir.children,
+        vpath->filename, strlen(vpath->filename));
+
+    em_vfs_path_release(vpath);
+
+    if (result == SUCCESS) {
+        php_clear_stat_cache(0,
+            vpath->filename,
+            strlen(vpath->filename));
+    }
+
+    return (result == SUCCESS);
+}
+
+bool EMSCRIPTEN_KEEPALIVE
+    em_vfs_mkdir(const char* path) {
+    em_vfs_path_t* vpath =
+        em_vfs_mkpath(path);
+
+    if (!vpath) {
+        return false;
+    }
+
+    if (em_vfs_resolve(vpath, false)) {
+        em_vfs_path_release(vpath);
+        return false;
+    }
+
+    em_vfs_node_t* node =
+        em_vfs_resolve(vpath, true);
+    em_vfs_path_release(vpath);
+    return node != NULL;
 }
 
 void EMSCRIPTEN_KEEPALIVE

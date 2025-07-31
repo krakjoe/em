@@ -64,11 +64,11 @@ em_vfs_node_t* em_vfs_node_mkdir(em_vfs_node_t* parent, const char* name) {
     dir->kind = EM_VFS_DIR;
     dir->name = pestrdup(name, 1);
     dir->parent = parent;
-    dir->data.dir.created = time(NULL);
+    dir->data.dir.created  = time(NULL);
     zend_hash_init(
         &dir->data.dir.children, 8, NULL,
         em_vfs_node_dtor, 1);
-    zend_hash_str_add_ptr(
+    zend_hash_str_add_ptr( 
         &parent->data.dir.children,
         name, strlen(name), dir);    
     return dir;

@@ -25,11 +25,33 @@
 #include "node.h"
 #include "path.h"
 
+typedef struct _em_vfs_abstract_t {
+    char*               data;
+    ssize_t             length;
+    size_t              position;
+    size_t              maximum;
+    em_vfs_node_t*      node;
+} em_vfs_abstract_t;
+
 void em_vfs_startup(void);
 void em_vfs_activate(void);
 void em_vfs_deactivate(void);
 void em_vfs_shutdown(void);
 
+bool EMSCRIPTEN_KEEPALIVE
+    em_vfs_put(
+        const char* path,
+        const char* data, size_t length);
+bool EMSCRIPTEN_KEEPALIVE
+    em_vfs_unlink(
+        const char* path,
+        bool directories);
+bool EMSCRIPTEN_KEEPALIVE
+    em_vfs_mkdir(const char* path);
+void* EMSCRIPTEN_KEEPALIVE
+    em_vfs_get_address(const char* path);
+ssize_t EMSCRIPTEN_KEEPALIVE
+    em_vfs_get_length(const char* path);
 void EMSCRIPTEN_KEEPALIVE em_vfs_reset(void);
 
 em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make);

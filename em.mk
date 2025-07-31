@@ -57,6 +57,10 @@ ifeq ($(EM_PHP_DIR),)
 		make -f em.mk EM_PHP_DIR=/path/to/php-src)
 endif
 ########################################################################
+# Load exporting macros
+########################################################################
+include $(EM_MK_DIR)/export.mk
+########################################################################
 # Load versioning macros
 ########################################################################
 include $(EM_MK_DIR)/version.mk
@@ -156,7 +160,12 @@ $(EM_SRC_DIR)/vfs.lo: $(EM_SRC_DIR)/vfs.c $(EM_SRC_DIR)/dir.lo $(EM_SRC_DIR)/nod
 		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/vfs.c -o $(EM_SRC_DIR)/vfs.lo
 
-$(EM_SRC_DIR)/api.lo: $(EM_SRC_DIR)/api.c $(EM_SRC_DIR)/http.lo $(EM_SRC_DIR)/vfs.lo $(EM_PHP_DIR)/.libs/libphp.a
+$(EM_SRC_DIR)/iterator.lo: $(EM_SRC_DIR)/iterator.c $(EM_SRC_DIR)/vfs.lo
+	$(LIBTOOL) --silent --mode=compile --tag=CC \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+			-c $(EM_SRC_DIR)/iterator.c -o $(EM_SRC_DIR)/iterator.lo
+
+$(EM_SRC_DIR)/api.lo: $(EM_SRC_DIR)/api.c $(EM_SRC_DIR)/http.lo $(EM_SRC_DIR)/vfs.lo $(EM_SRC_DIR)/iterator.lo $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
 		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/api.c -o $(EM_SRC_DIR)/api.lo
@@ -168,8 +177,8 @@ api: $(EM_SRC_DIR)/api.lo
 bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --preserve-dup-deps --mode=link --tag=CC \
 	$(CC) -o $(EM_ROOT_DIR)/php-em.js --post-js=$(EM_SRC_DIR)/stub.js $(EM_RECIPE_LINK_OBJECTS) \
-		-s EXPORTED_FUNCTIONS='["_em_startup", "_em_run_string", "_em_run_length", "_em_run_free", "_em_shutdown", "_em_http_buffer", "_em_vfs_reset"]' \
-		-s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","UTF8ToString","stringToUTF8", "lengthBytesUTF8", "HEAPU8"]' \
+		-s EXPORTED_FUNCTIONS='$(EM_EXPORT_FUNCTIONS)' \
+		-s EXPORTED_RUNTIME_METHODS='$(EM_EXPORT_METHODS)' \
 		-s ALLOW_MEMORY_GROWTH=1 \
 		-s INITIAL_MEMORY=128MB \
 		-s WASM=1 $(EM_EMSDK_LDFLAGS) $(EM_RECIPE_LDFLAGS) $(EM_RECIPE_LIBS) \
@@ -180,6 +189,7 @@ bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
 		$(EM_SRC_DIR)/node.o \
 		$(EM_SRC_DIR)/path.o \
 		$(EM_SRC_DIR)/vfs.o \
+		$(EM_SRC_DIR)/iterator.o \
 		$(EM_SRC_DIR)/api.o
 	@ls -lash $(EM_ROOT_DIR)/php-em.js $(EM_ROOT_DIR)/php-em.wasm
 
