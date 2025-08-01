@@ -211,7 +211,7 @@ static zend_always_inline zend_op_array*
     // Create a file handle
     zend_file_handle fh;
     zend_stream_init_filename(
-    	&fh, "virtual://script.php");
+    	&fh, "vfs://stdin.php");
     fh.type = ZEND_HANDLE_STREAM;
     fh.handle.stream.handle = (void*)&string;
     fh.handle.stream.reader = em_string_read;
