@@ -70,7 +70,8 @@ EM_EXPORT_METHODS = [      \
 	"UTF8ToString",        \
 	"stringToUTF8",        \
 	"lengthBytesUTF8",     \
-	"HEAPU8"               \
+	"HEAPU8",              \
+	"HEAP32"               \
 ]
 define EM_EXPORT_ADD_METHOD
 ifeq ($(filter $(1),$(EM_EXPORT_METHODS)),)

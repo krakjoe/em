@@ -15,16 +15,34 @@
   | Author: krakjoe                                                      |
   +----------------------------------------------------------------------+
  */
-
-#ifndef HAVE_EM_HTTP
-#define HAVE_EM_HTTP
+#ifndef HAVE_EM_HTTP_REQUEST
+#define HAVE_EM_HTTP_REQUEST
 
 #include <emscripten.h>
 
-void em_http_startup(void);
-void em_http_activate(void);
-void em_http_deactivate(void);
-void em_http_shutdown(void);
+typedef struct _em_http_request_t {
+    char* method;
+    char* url;
+    struct {
+        char** keys;
+        char** values;
+        size_t length;
+    } headers;
+    char*  body;
+    size_t length;
+    size_t timeout;
+} em_http_request_t;
 
-void* EMSCRIPTEN_KEEPALIVE em_http_buffer(uintptr_t ab, size_t length);
+em_http_request_t em_http_request_create(
+    const char* url, php_stream_context* context);
+ssize_t em_http_request(const char*  method,
+    const char*  url,
+    const char** hkeys,
+    const char** hvalues,
+    size_t       hlength,
+    const char*  body,
+    size_t       blength,
+    size_t       timeout,
+    uintptr_t abstract);
+void em_http_request_destroy(em_http_request_t* request);
 #endif

@@ -156,7 +156,12 @@ $(EM_PHP_DIR)/.libs/libphp.a.stamp: $(EM_SRC_DIR)/stub.lo $(EM_RECIPE_BUILD_OBJE
 $(EM_PHP_DIR)/.libs/libphp.a: $(EM_PHP_DIR)/.libs/libphp.a.stamp
 	@true
 
-$(EM_SRC_DIR)/http.lo: $(EM_SRC_DIR)/http.c $(EM_PHP_DIR)/.libs/libphp.a
+$(EM_SRC_DIR)/request.lo: $(EM_SRC_DIR)/request.c $(EM_PHP_DIR)/.libs/libphp.a
+	$(LIBTOOL) --silent --mode=compile --tag=CC \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
+			-c $(EM_SRC_DIR)/request.c -o $(EM_SRC_DIR)/request.lo
+
+$(EM_SRC_DIR)/http.lo: $(EM_SRC_DIR)/http.c $(EM_SRC_DIR)/request.lo $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/http.c -o $(EM_SRC_DIR)/http.lo
@@ -205,6 +210,7 @@ bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
 		-s WASM=1 $(EM_EMSDK_LDFLAGS) $(EM_RECIPE_LDFLAGS) $(EM_RECIPE_LIBS) \
 		$(EM_PHP_DIR)/.libs/libphp.a \
 		$(EM_SRC_DIR)/stub.o \
+		$(EM_SRC_DIR)/request.o \
 		$(EM_SRC_DIR)/http.o \
 		$(EM_SRC_DIR)/dir.o \
 		$(EM_SRC_DIR)/node.o \
