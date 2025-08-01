@@ -88,7 +88,10 @@ $(foreach p,$(EM_RECIPE_PATHS), \
 include $(EM_RECIPE_PATHS)
 endif
 ########################################################################
-.PHONY: all debug clean clean-objects clean-bin clean-recipes clean-php strip install with-%
+.PHONY: all debug 
+.PHONY: clean clean-objects clean-bin clean-recipes clean-php clean-deps
+.PHONY: strip install 
+.PHONY: with-%
 ########################################################################
 ifneq ($(filter debug% clean%, $(MAKECMDGOALS)),)
 with-%:
@@ -100,7 +103,25 @@ endif
 ########################################################################
 all: bin
 
-$(EM_PHP_DIR)/config.status: $(EM_RECIPE_TARGETS)
+config.deps:
+	@$(eval EM_RECIPE_DEP_MISSING :=)
+	@$(foreach i,$(shell seq 1 $(words $(EM_RECIPE_DEPS))), \
+		$(eval EM_DEP := $(word $(i),$(EM_RECIPE_DEPS))) \
+		$(eval EM_REQ := $(word $(i),$(EM_RECIPE_REQS))) \
+		$(if $(value $(EM_DEP)), \
+			$(info Deps: $(EM_REQ) satisfied by $(EM_DEP) = $($(EM_DEP))), \
+			$(eval EM_RECIPE_DEP_MISSING += \
+				$(EM_REQ) requires $(EM_DEP)) \
+		) \
+	)
+	@if [ -n "$(strip $(EM_RECIPE_DEP_MISSING))" ]; then \
+		echo "$(EM_RECIPE_DEP_MISSING)" | \
+			sed 's/^/Deps: Missing required symbol: /'; \
+		exit 1; \
+	fi
+	@if [ ! -f $@ ]; then touch $@; fi
+
+$(EM_PHP_DIR)/config.status: config.deps $(EM_RECIPE_TARGETS)
 	$(EM_PHP_DIR)/buildconf --force
 	@cd $(EM_PHP_DIR) && \
 		$(EMCONFIGURE) ./configure $(EM_PHP_CONFIGURE) \
@@ -204,15 +225,23 @@ clean-recipes: $(EM_RECIPE_CLEANERS)
 clean-objects:
 	@rm -rf $(EM_SRC_DIR)/*.o
 	@rm -rf $(EM_SRC_DIR)/*.lo
+	@rm -rf $(EM_RECIPE_STUBS)/*.o
+	@rm -rf $(EM_RECIPE_STUBS)/*.lo
 
 clean-bin:
 	@rm -rf $(EM_ROOT_DIR)/php-em.js
 	@rm -rf $(EM_ROOT_DIR)/php-em.wasm
 
 clean-php:
-	@$(EMMAKE) make -C $(EM_PHP_DIR) clean
+	@rm -rf $(EM_PHP_DIR)/config.status
+	@rm -rf $(EM_PHP_DIR)/Makefile
 
-clean: clean-recipes clean-objects clean-bin clean-php
+clean-deps:
+	@rm -rf config.deps
+
+clean: clean-recipes clean-objects clean-bin clean-php clean-deps
+	@$(EMMAKE) make \
+		-C $(EM_PHP_DIR) clean
 	@echo "The build area is clean"
 
 debug:

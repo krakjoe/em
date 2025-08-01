@@ -230,10 +230,6 @@ static zend_always_inline
     }
 
     zend_error_cb     = zend_error_func;
-
-    if (fh->type == ZEND_HANDLE_FILENAME) {
-        zend_string_release(realpath);
-    }
  
     return compiled;
 }

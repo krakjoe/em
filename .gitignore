@@ -9,6 +9,7 @@ Makefile.objects
 aclocal.m4
 autom4te.cache/
 build/
+config.deps
 config.cache
 config.guess
 config.h

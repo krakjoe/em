@@ -59,6 +59,13 @@
 #	  This should be used to add a library to the final link command
 #     Will ignore duplicates
 #
+#   EM_RECIPE_ADD_DEP(recipe, dependency)
+#	  Shall append the dependency to the dependency list
+#	  recipe should be the name of a recipe, dependency should be the
+#	  name of a make variable
+#	  !Any recipe which uses the symbols defined in another recipe must
+#	  declare the dependency!
+#
 ########################################################################
 # Public, may be set by caller
 ########################################################################
@@ -140,5 +147,14 @@ define EM_RECIPE_ADD_LDFLAGS
 ifeq ($(filter $(1),$(EM_RECIPE_LDFLAGS)),)
 EM_RECIPE_LDFLAGS  += $(1)
 endif
+endef
+########################################################################
+# EM_RECIPE_ADD_DEP
+########################################################################
+EM_RECIPE_REQS  ?=
+EM_RECIPE_DEPS  ?=
+define EM_RECIPE_ADD_DEP
+EM_RECIPE_REQS  += $(1)
+EM_RECIPE_DEPS  += $(2)
 endef
 ########################################################################

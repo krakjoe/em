@@ -110,7 +110,7 @@ static sqlite3_vfs em_sqlite_vfs = {
 };
 
 char* em_sqlite_path(const char* zPath) {
-    char* pPath = zPath;
+    char* pPath = (char*) zPath;
     char* vresult;
 
     while (pPath[0] == '/')
