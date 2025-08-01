@@ -32,6 +32,7 @@
 EM_EXPORT_FUNCTIONS = [          \
 	"_em_startup",               \
 	"_em_run_string",            \
+	"_em_run_script",            \
 	"_em_run_length",            \
 	"_em_run_free",              \
 	"_em_shutdown",              \

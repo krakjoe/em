@@ -497,10 +497,15 @@ void em_vfs_startup(void) {
 }
 
 void em_vfs_activate(void) {
-    php_register_url_stream_wrapper("vfs",   &em_vfs_wrapper);
+    php_unregister_url_stream_wrapper("file");
+    php_register_url_stream_wrapper("vfs", &em_vfs_wrapper);
+    php_register_url_stream_wrapper_volatile(
+        ZSTR_KNOWN(ZEND_STR_FILE), &em_vfs_wrapper);
 }
 
 void em_vfs_deactivate(void) {
+    php_unregister_url_stream_wrapper_volatile(
+        ZSTR_KNOWN(ZEND_STR_FILE));
     php_unregister_url_stream_wrapper("vfs");
 }
 

@@ -36,8 +36,9 @@ extern sapi_module_struct em_sapi_module;
 
 static const char EM_INI[] =
     "allow_url_fopen=1\n"
+    "allow_url_include=1\n"
     "html_errors=0\n"
-    "error_reporting=32767\n"
+    "error_reporting=22527\n"
     "display_errors=1\n"
     "register_argc_argv=1\n"
     "implicit_flush=1\n"
@@ -45,6 +46,10 @@ static const char EM_INI[] =
     "max_execution_time=0\n"
     "max_input_time=-1\n\0";
 
+
+typedef zend_op_array* (*zend_compile_func_t)(
+    zend_file_handle* fh,
+    int  type);
 #if PHP_VERSION_ID < 80100
 typedef void (*zend_error_func_t)(
     int type,
@@ -65,9 +70,14 @@ typedef size_t (*zend_write_func_t)(
     const char* buf,
     size_t len);
 
-static zend_write_func_t zend_write_func;
-static zend_error_func_t zend_error_func;
-static zend_log_func_t   zend_log_func;
+static zend_compile_func_t zend_compile_func;
+static zend_write_func_t   zend_write_func;
+static zend_error_func_t   zend_error_func;
+static zend_log_func_t     zend_log_func;
+
+static zend_op_array*
+    em_compile_file(
+        zend_file_handle* fh, int type);
 
 typedef struct _em_string_t {
     char* value;
@@ -124,7 +134,7 @@ size_t em_buffer(const char* buf, size_t len) {
 /* {{{ logging */
 void em_buffer_log(const char* message, int type) {
     zend_string* msg = zend_strpprintf(
-        0, "em internal error: %s",
+        0, "em internal error: %s\n",
         message
     );
 
@@ -136,7 +146,7 @@ void em_buffer_log(const char* message, int type) {
 #if PHP_VERSION_ID < 80100
 void em_buffer_error(int type, const char* file, const uint32_t lineno, zend_string* message) {
     zend_string* msg = zend_strpprintf(
-        0, "em error in %s on line %u: %s",
+        0, "em error in %s on line %u: %s\n",
         file,
         lineno,
         ZSTR_VAL(message)
@@ -147,7 +157,7 @@ void em_buffer_error(int type, const char* file, const uint32_t lineno, zend_str
 #else
 void em_buffer_error(int type, zend_string* file, const uint32_t lineno, zend_string* message) {
     zend_string* msg = zend_strpprintf(
-        0, "em error in %s on line %u: %s",
+        0, "em error in %s on line %u: %s\n",
         ZSTR_VAL(file),
         lineno,
         ZSTR_VAL(message)
@@ -170,6 +180,9 @@ static zend_always_inline zend_result
     em_vfs_activate();
 
     em_clear(false);
+
+    zend_compile_func = zend_compile_file;
+    zend_compile_file = em_compile_file;
 
     return SUCCESS;
 }
@@ -200,32 +213,15 @@ static size_t em_string_length(void *handle) {
 
 static void em_string_close(void *handle) { /* no op */ }
 
-static zend_always_inline zend_op_array*
-    em_compile(const char* code, size_t length) {
-    em_string_t string =
-    	(em_string_t) {
-    	    .value   = (char*) code,
-    	    .length  = length
-    };
-
-    // Create a file handle
-    zend_file_handle fh;
-    zend_stream_init_filename(
-    	&fh, "vfs://stdin.php");
-    fh.type = ZEND_HANDLE_STREAM;
-    fh.handle.stream.handle = (void*)&string;
-    fh.handle.stream.reader = em_string_read;
-    fh.handle.stream.closer = em_string_close;
-    fh.handle.stream.fsizer = em_string_length;
-    fh.handle.stream.isatty = 0;
-
-    zend_error_func = zend_error_cb;
-    zend_error_cb   = em_buffer_error;
+static zend_always_inline
+    zend_op_array*
+        em_compile_file(zend_file_handle *fh, int type) {
+    zend_error_func   = zend_error_cb;
+    zend_error_cb     = em_buffer_error;
 
     zend_op_array* compiled = NULL;
     zend_try {
-        compiled = zend_compile_file(
-            &fh, ZEND_INCLUDE);
+        compiled = zend_compile_func(fh, type);
     } zend_end_try();
 
     if (EG(exception)) {
@@ -233,10 +229,49 @@ static zend_always_inline zend_op_array*
             EG(exception), E_COMPILE_ERROR);
     }
 
-    zend_error_cb   = zend_error_func;
+    zend_error_cb     = zend_error_func;
 
+    if (fh->type == ZEND_HANDLE_FILENAME) {
+        zend_string_release(realpath);
+    }
+ 
+    return compiled;
+}
+
+static zend_always_inline
+    zend_op_array*
+        em_compile_string(const char* code, size_t length) {
+    em_string_t string =
+    	(em_string_t) {
+    	    .value   = (char*) code,
+    	    .length  = length
+    };
+
+    zend_file_handle fh;
+    zend_stream_init_filename(
+    	&fh, "stdin.php");
+    fh.type = ZEND_HANDLE_STREAM;
+    fh.handle.stream.handle = (void*)&string;
+    fh.handle.stream.reader = em_string_read;
+    fh.handle.stream.closer = em_string_close;
+    fh.handle.stream.fsizer = em_string_length;
+    fh.handle.stream.isatty = 0;
+    zend_op_array* compiled =
+        zend_compile_file(&fh, ZEND_INCLUDE);
     zend_destroy_file_handle(&fh);
+    return compiled;
+}
 
+static zend_always_inline
+    zend_op_array*
+        em_compile_script(const char* script) {
+    zend_file_handle fh;
+    zend_stream_init_filename(&fh, script);
+    fh.type = ZEND_HANDLE_FILENAME;
+    fh.handle.stream.isatty = 0;
+    zend_op_array* compiled =
+        zend_compile_file(&fh, ZEND_INCLUDE);
+    zend_destroy_file_handle(&fh);
     return compiled;
 }
 
@@ -262,6 +297,8 @@ static zend_always_inline void em_deactivate(void) {
     em_http_deactivate();
 
     php_request_shutdown((void*) NULL);
+
+    zend_compile_file = zend_compile_func;
 } /* }}} */
 
 /* {{{ exports */
@@ -303,7 +340,24 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(const char* code, size_t length) {
     }
 
     zend_op_array* ops =
-        em_compile(code, length);
+        em_compile_string(code, length);
+
+    if (ops) {
+        em_execute(ops);
+    }
+
+    em_deactivate();
+
+    return (uintptr_t) __em_buffer.value;
+}
+
+uintptr_t EMSCRIPTEN_KEEPALIVE em_run_script(const char* script) {
+    if (em_activate() != SUCCESS) {
+        return (uintptr_t) -1;
+    }
+
+    zend_op_array* ops =
+        em_compile_script(script);
 
     if (ops) {
         em_execute(ops);
