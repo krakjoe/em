@@ -103,7 +103,7 @@ endif
 ########################################################################
 all: bin
 
-config.deps:
+$(EM_PHP_DIR)/config.deps:
 	@$(eval EM_RECIPE_DEP_MISSING :=)
 	@$(foreach i,$(shell seq 1 $(words $(EM_RECIPE_DEPS))), \
 		$(eval EM_DEP := $(word $(i),$(EM_RECIPE_DEPS))) \
@@ -121,7 +121,7 @@ config.deps:
 	fi
 	@if [ ! -f $@ ]; then touch $@; fi
 
-$(EM_PHP_DIR)/config.status: config.deps $(EM_RECIPE_TARGETS)
+$(EM_PHP_DIR)/config.status: $(EM_PHP_DIR)/config.deps $(EM_RECIPE_TARGETS)
 	$(EM_PHP_DIR)/buildconf --force
 	@cd $(EM_PHP_DIR) && \
 		$(EMCONFIGURE) ./configure $(EM_PHP_CONFIGURE) \
