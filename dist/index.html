@@ -511,15 +511,15 @@ for ($i = 1; $i <= 5; $i++) {
 echo "=== VFS Demo ===\\n";
 
 // Create some files
-file_put_contents("vfs://readme.txt", "Welcome to em VFS!");
-file_put_contents("vfs://data.json", '{"name": "em", "type": "php-wasm"}');
+file_put_contents("/readme.txt", "Welcome to em VFS!");
+file_put_contents("/data.json", '{"name": "em", "type": "php-wasm"}');
 
 // Create a directory structure
-file_put_contents("vfs://dir/subfile.txt", "Nested file content");
+file_put_contents("/dir/subfile.txt", "Nested file content");
 
 // List root directory
 echo "Root directory contents:\\n";
-foreach (scandir("vfs://") as $item) {
+foreach (scandir("/") as $item) {
     if ($item !== '.' && $item !== '..') {
         echo "- $item\\n";
     }
@@ -527,11 +527,11 @@ foreach (scandir("vfs://") as $item) {
 
 // Read files back
 echo "\\nFile contents:\\n";
-echo "readme.txt: " . file_get_contents("vfs://readme.txt") . "\\n";
-echo "data.json: " . file_get_contents("vfs://data.json") . "\\n";
+echo "readme.txt: " . file_get_contents("/readme.txt") . "\\n";
+echo "data.json: " . file_get_contents("/data.json") . "\\n";
 
 // Check file stats
-$stat = stat("vfs://readme.txt");
+$stat = stat("/readme.txt");
 echo "\\nreadme.txt size: " . $stat['size'] . " bytes\\n";
 ?>`,
 
