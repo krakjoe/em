@@ -21,92 +21,89 @@
 #include "http.h"
 #include "request.h"
 
+static void em_http_request_headers_parse_line(em_http_request_t* request, const char* line, size_t* header_count) {
+    // Find the colon separator
+    const char* colon = strchr(line, ':');
+    if (!colon) return;
+
+    // Split and trim the key
+    size_t key_len = colon - line;
+    while (key_len > 0 && (line[key_len-1] == ' ' || line[key_len-1] == '\t')) key_len--;
+    if (key_len == 0) return;
+
+    // Skip colon and whitespace for value
+    const char* value = colon + 1;
+    while (*value == ' ' || *value == '\t') value++;
+    size_t value_len = strlen(value);
+    while (value_len > 0 && (value[value_len-1] == ' ' || value[value_len-1] == '\t')) value_len--;
+    if (value_len == 0) return;
+
+    // Store the header
+    request->headers.keys[*header_count] = pestrndup(line, key_len, 1);
+    request->headers.values[*header_count] = pestrndup(value, value_len, 1);
+    (*header_count)++;
+}
+
 static void em_http_request_headers_array(em_http_request_t* request, zval* headers) {
-    request->headers.length =
-        zend_hash_num_elements(Z_ARRVAL_P(headers));
-    request->headers.keys = pecalloc(
-        sizeof(char*), request->headers.length, 1);
-    request->headers.values = pecalloc(
-        sizeof(char*), request->headers.length, 1);
-
-    zend_string* key;
-    zval*        value;
-    size_t       header = 0;
-    ZEND_HASH_FOREACH_STR_KEY_VAL(Z_ARRVAL_P(headers), key, value) {
-        if (!key || /* non-numeric index */
-            !value || /* null value */
-            Z_TYPE_P(value) != IS_STRING) { /* malformed array */
-            request->headers.keys[header] = pestrdup("", 1);
-            request->headers.values[header] = pestrdup("", 1);
-            header++;
-            continue;
+    // First count valid string elements
+    size_t count = 0;
+    zval* value;
+    ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(headers), value) {
+        if (value && Z_TYPE_P(value) == IS_STRING) {
+            count++;
         }
-
-        request->headers.keys[header] = pestrndup(
-            ZSTR_VAL(key), ZSTR_LEN(key), 1);
-        request->headers.values[header] = pestrndup(
-            Z_STRVAL_P(value), Z_STRLEN_P(value), 1);
-        header++;
     } ZEND_HASH_FOREACH_END();
+
+    if (count == 0) {
+        request->headers.length = 0;
+        request->headers.keys = NULL;
+        request->headers.values = NULL;
+        return;
+    }
+
+    request->headers.keys = pecalloc(sizeof(char*), count, 1);
+    request->headers.values = pecalloc(sizeof(char*), count, 1);
+    
+    size_t header_count = 0;
+    ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(headers), value) {
+        if (value && Z_TYPE_P(value) == IS_STRING) {
+            em_http_request_headers_parse_line(request, Z_STRVAL_P(value), &header_count);
+        }
+    } ZEND_HASH_FOREACH_END();
+    
+    request->headers.length = header_count;
 }
 
 static void em_http_request_headers_string(em_http_request_t* request, zval* headers) {
-    // Parse string headers into array format and delegate
-    zval array;
-    array_init(&array);
+    // Count number of \r\n delimiters to allocate space
+    const char* str = Z_STRVAL_P(headers);
+    size_t len = Z_STRLEN_P(headers);
+    size_t count = 1;  // At least one header even without delimiters
+    
+    for (size_t i = 0; i < len - 1; i++) {
+        if (str[i] == '\r' && str[i + 1] == '\n') {
+            count++;
+        }
+    }
 
-    // Work with a copy so we can modify it
-    char* parsing = estrdup(Z_STRVAL_P(headers));
-    char* line    = strtok(parsing, "\n\r");
+    request->headers.keys = pecalloc(sizeof(char*), count, 1);
+    request->headers.values = pecalloc(sizeof(char*), count, 1);
+
+    // Now parse each line
+    char* parsing = estrndup(str, len);
+    char* line = strtok(parsing, "\r\n");
+    size_t header_count = 0;
 
     while (line) {
-        // Skip empty lines and trim whitespace
-        while (*line == ' ' || *line == '\t') line++;
-        if (*line == '\0') {
-            line = strtok(NULL, "\n\r");
-            continue;
+        // Skip empty lines
+        if (*line) {
+            em_http_request_headers_parse_line(request, line, &header_count);
         }
-        
-        // Find the colon separator
-        char* colon = strchr(line, ':');
-        if (colon) {
-            // Split into key and value
-            *colon = '\0';  // Null terminate key
-            char* key = line;
-            char* value = colon + 1;
-
-            // Trim key
-            char* key_end = colon - 1;
-            while (key_end > key && (*key_end == ' ' || *key_end == '\t')) {
-                *key_end = '\0';
-                key_end--;
-            }
-
-            // Trim value
-            while (*value == ' ' || *value == '\t') value++;
-            char* value_end = value + strlen(value) - 1;
-            while (value_end > value && (*value_end == ' ' || *value_end == '\t')) {
-                *value_end = '\0';
-                value_end--;
-            }
-
-            // Add to array if both key and value are non-empty
-            if (*key && *value) {
-                add_assoc_string(&array, key, value);
-            }
-        }
-
-        line = strtok(NULL, "\n\r");
+        line = strtok(NULL, "\r\n");
     }
 
     efree(parsing);
-    
-    // Delegate to array function if we have headers
-    if (zend_hash_num_elements(Z_ARRVAL(array)) > 0) {
-        em_http_request_headers_array(request, &array);
-    }
-    
-    zval_ptr_dtor(&array);
+    request->headers.length = header_count;
 }
 
 em_http_request_t em_http_request_create(const char* url, php_stream_context* context) {
@@ -227,11 +224,9 @@ EM_JS(ssize_t, em_http_request, (
         if (http.headers.length) {
             for (let h = 0; h < http.headers.length; h++) {
                 let key = UTF8ToString(
-                    Module.HEAP32[
-                        (http.headers.keys   >> 2) + h]);
+                    Module.getValue(http.headers.keys + h * 4, 'i32'));
                 let value = UTF8ToString(
-                    Module.HEAP32[
-                        (http.headers.values >> 2) + h]);
+                    Module.getValue(http.headers.values + h * 4, 'i32'));
 
                 if (key.toLowerCase() == "user-agent") {
                     console.warn(

@@ -25,25 +25,23 @@ const ZipManager = {
                 if (!zipEntry.dir) {
                     try {
                         const content = await zipEntry.async('string');
-                        const vfsPath = 'vfs://' + relativePath;
                         
                         // Create directory if needed
                         const pathParts = relativePath.split('/');
                         if (pathParts.length > 1) {
-                            let currentPath = 'vfs://';
+                            let currentPath = '';
                             for (let i = 0; i < pathParts.length - 1; i++) {
-                                currentPath += pathParts[i];
+                                currentPath += (currentPath ? '/' : '') + pathParts[i];
                                 try {
                                     Module.vfs.mkdir(currentPath);
                                 } catch (e) {
                                     // Directory might already exist, ignore error
                                 }
-                                currentPath += '/';
                             }
                         }
                         
                         // Write file to VFS
-                        const success = Module.vfs.put(vfsPath, content);
+                        const success = Module.vfs.put(relativePath, content);
                         if (success) {
                             importedCount++;
                         } else {
@@ -85,7 +83,7 @@ const ZipManager = {
             let exportedCount = 0;
 
             // Get all files from VFS
-            const iterator = Module.vfs.iterate('vfs://');
+            const iterator = Module.vfs.iterate('/');
             const files = iterator.all(true);
             iterator.free();
 
@@ -96,7 +94,7 @@ const ZipManager = {
                     
                     if (file.kind === Module.vfs.EM_VFS_FILE) {
                         // It's a file - get content and add to ZIP
-                        const content = Module.vfs.get('vfs://' + fullPath);
+                        const content = Module.vfs.get(fullPath);
                         if (content !== false) {
                             // Convert Uint8Array to string
                             const decoder = new TextDecoder('utf-8');
@@ -182,6 +180,21 @@ function handleImportZip() {
 }
 
 function handleExportZip() {
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+
+    // Check if there are any files to export
+    let iterator = Module.vfs.iterate('vfs://');
+    const files = iterator.all(true);
+    iterator.free();
+
+    if (!files || files.length === 0) {
+        updateStatus('No files to export', 'error');
+        return;
+    }
+
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
     const filename = `vfs-export-${timestamp}.zip`;
     

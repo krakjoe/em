@@ -1,0 +1,1159 @@
+// All JavaScript logic for the IDE
+
+// 1. Demo scripts
+const demos = {
+    hello: `<?php\n// Hello World demo\necho "Hello, World!";\n?>`,
+    vfs: `<?php\n// Virtual File System demo\nfile_put_contents('/tmp/test.txt', 'Hello from VFS!');\necho file_get_contents('/tmp/test.txt');\n?>`,
+    http: `<?php\n// HTTP Requests demo\n$url = 'https://api.github.com/zen';\n$opts = [\n    'http' => [\n        'method' => 'GET',\n        'header' => [\n            'User-Agent' => 'em-php-wasm'\n        ]\n    ]\n];\n$context = stream_context_create($opts);\necho file_get_contents($url, false, $context);\n?>`,
+    sqlite: `<?php\n// SQLite Database demo\n$db = new SQLite3(':memory:');\n$db->exec('CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT);');\n$db->exec("INSERT INTO test (name) VALUES ('Alice'), ('Bob'), ('Charlie')");\n$res = $db->query('SELECT * FROM test');\nwhile ($row = $res->fetchArray(SQLITE3_ASSOC)) {\n    echo $row['id'] . ': ' . $row['name'] . "\\n";\n}\n?>`,
+    oop: `<?php\n// Object-Oriented PHP demo\nclass Person {\n    public $name;\n    function __construct($name) { $this->name = $name; }\n    function greet() { return "Hello, $this->name!"; }\n}\n$p = new Person('World');\necho $p->greet();\n?>`,
+    generators: `<?php\n// Generators & Iterators demo\nfunction numbers() {\n    for ($i = 1; $i <= 5; $i++) yield $i;\n}\nforeach (numbers() as $n) echo $n . " ";\n?>`,
+    match: `<?php\n// Match Expression (PHP 8.0+) demo\n$input = 'foo';\necho match($input) {\n    'foo' => 'Matched foo',\n    'bar' => 'Matched bar',\n    default => 'No match',\n};\n?>`,
+    enums: `<?php\n// Enums (PHP 8.1+) demo\nenum Status {\n    case Pending;\n    case Active;\n    case Done;\n}\n$status = Status::Active;\necho $status->name;\n?>`,
+    readonly: `<?php\n// Readonly Properties (PHP 8.1+) demo\nclass Test {\n    public readonly int $x;\n    public function __construct(int $x) { $this->x = $x; }\n}\n$t = new Test(42);\necho $t->x;\n?>`
+};
+
+const modal = new Modal();
+
+// 2. Global state variables
+let currentOpenFile = null;
+let openTabs = [];
+let unsavedChanges = false;
+let editor = null;
+let currentModalAction = null;
+let currentContextPath = null;
+let isReady = false;
+let currentPHPVersion = '8.3';
+
+const tabBar = document.getElementById('tabBar');
+const phpVersionSelect = document.getElementById('phpVersion');
+const runButton = document.getElementById('runButton');
+const clearOutputButton = document.getElementById('clearOutput');
+const resetVFSButton = document.getElementById('resetVFS');
+const explorerHeader = document.querySelector('.explorer-header');
+const newFileButton = document.getElementById('newFile');
+const newFolderButton = document.getElementById('newFolder');
+const refreshFilesButton = document.getElementById('refreshFiles');
+const demoSelect = document.getElementById('demoSelect');
+const fileTree = document.getElementById('fileTree');
+const currentFileElement = document.getElementById('currentFile');
+const contextMenu = document.getElementById('contextMenu');
+const statusBar = document.getElementById('statusBar');
+const output = document.getElementById('output');
+const outputStatus = document.getElementById('outputStatus');
+
+function resetVFS() {
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    try {
+        Module.vfs.reset();
+        refreshFileTree();
+        updateStatus('VFS reset', 'success');
+    } catch (error) {
+        console.error('Error resetting VFS:', error);
+        updateStatus('Error resetting VFS', 'error');
+    }
+}
+
+function normalizePath(path) {
+    if (!path) return '';
+    let p = path.replace(/^vfs:\/\//, '');
+    if (!p.startsWith('/')) p = '/' + p;
+    p = p.replace(/\/+/g, '/');
+    return p;
+}
+
+function renderTabs() {
+    if (!tabBar) return;
+    tabBar.innerHTML = '';
+    openTabs.forEach(tab => {
+        const tabElem = document.createElement('div');
+        tabElem.className = 'tab' + (currentOpenFile === tab.path ? ' active' : '');
+        tabElem.textContent = tab.name + (tab.unsaved ? ' •' : '');
+        tabElem.style.padding = '0.5em 1em';
+        tabElem.style.cursor = 'pointer';
+        tabElem.style.background = currentOpenFile === tab.path ? '#232f3e' : 'transparent';
+        tabElem.style.borderRight = '1px solid #404040';
+        tabElem.onclick = () => switchTab(tab.path, tab.name);
+        // Close button
+        const closeBtn = document.createElement('span');
+        closeBtn.textContent = ' ×';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.style.marginLeft = '0.5em';
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            closeTab(tab.path);
+        };
+        tabElem.appendChild(closeBtn);
+        tabBar.appendChild(tabElem);
+    });
+}
+
+function openTab(path, content) {
+    let normPath = path ? normalizePath(path) : null;
+    let name = normPath ? normPath.split('/').pop() : (content && content.name ? content.name : 'untitled.php');
+    let tab = normPath ? openTabs.find(t => t.path === normPath) : openTabs.find(t => !t.path && t.name === name);
+    if (tab) {
+        switchTab(tab.path, tab.name);
+        return;
+    }
+    // Only mark as unsaved if content is different from what is in the VFS (for files), or if explicitly unsaved for untitled
+    let unsaved = false;
+    if (normPath && Module && Module.vfs) {
+        try {
+            console.log("path" + path);
+            console.log("normalised path " + normPath);
+            const vfsContent = Module.vfs.get(normPath);
+            if (vfsContent !== false) {
+                const decoder = new TextDecoder('utf-8');
+                const vfsText = decoder.decode(vfsContent);
+                unsaved = (content !== vfsText);
+            }
+        } catch {}
+    }
+    openTabs.push({ path: normPath, name, content, unsaved });
+    switchTab(normPath, name);
+}
+
+function switchTab(path, name) {
+    let normPath = path ? normalizePath(path) : null;
+    let tab = normPath ? openTabs.find(t => t.path === normPath) : null;
+    if (!tab && typeof name === 'string') {
+        tab = openTabs.find(t => !t.path && t.name === name);
+    }
+    if (!tab) return;
+
+    // Save current editor state to current tab before switching
+    if (currentOpenFile !== null || typeof name === 'string') {
+        const currentTab = currentOpenFile ? 
+            openTabs.find(t => t.path === normalizePath(currentOpenFile)) :
+            openTabs.find(t => !t.path && t.name === name);
+        
+        if (currentTab) {
+            const editorValue = editor.getValue();
+            currentTab.content = editorValue;
+            
+            if (currentTab.path && currentTab.vfsContent !== undefined) {
+                // For files in VFS, compare with stored VFS content
+                currentTab.unsaved = (editorValue !== currentTab.vfsContent);
+            } else if (!currentTab.path) {
+                // For new/untitled files, any content means unsaved
+                currentTab.unsaved = editorValue.length > 0;
+            }
+        }
+    }
+    
+    currentOpenFile = tab.path;
+    // Always use tab's stored content when switching
+    editor.setValue(tab.content || '');
+    // Always set unsavedChanges to the tab's unsaved state after syncing editor
+    unsavedChanges = !!tab.unsaved;
+    updateCurrentFileDisplay();
+    renderTabs();
+}
+
+function closeTab(path) {
+    const idx = openTabs.findIndex(t => t.path === path);
+    if (idx === -1) return;
+    const tab = openTabs[idx];
+    if (tab.unsaved) {
+        if (!confirm(`You have unsaved changes in ${tab.name}. Close anyway?`)) return;
+    }
+    openTabs.splice(idx, 1);
+    if (currentOpenFile === path) {
+        if (openTabs.length > 0) {
+            switchTab(openTabs[Math.max(0, idx - 1)].path);
+        } else {
+            currentOpenFile = null;
+            unsavedChanges = false;
+            editor.setValue('');
+            updateCurrentFileDisplay();
+        }
+    } else {
+        // Make sure the editor shows current tab's content
+        const currentTab = openTabs.find(t => t.path === currentOpenFile);
+        if (currentTab && editor.getValue() !== currentTab.content) {
+            editor.setValue(currentTab.content || '');
+        }
+    }
+    renderTabs();
+}
+
+function refreshFileTree() {
+    if (!isReady || !Module || !Module.vfs) {
+        return;
+    }
+    let iterator = null;
+    try {
+        iterator = Module.vfs.iterate('/');
+        const files = iterator.all(true);
+        renderFileTree(files);
+    } catch (error) {
+        console.error('Error refreshing file tree:', error);
+        updateStatus('Error refreshing file tree', 'error');
+    } finally {
+        if (iterator) {
+            iterator.free();
+        }
+    }
+}
+
+function renderFileTree(files, container = fileTree, basePath = '/') {
+    if (container === fileTree) {
+        const rootItem = container.querySelector('.file-item');
+        const existingChildren = container.querySelector('.file-children');
+        if (existingChildren) {
+            existingChildren.remove();
+        }
+        if (files.length > 0) {
+            const childrenContainer = document.createElement('div');
+            childrenContainer.className = 'file-children expanded';
+            renderFileItems(files, childrenContainer, '/');
+            container.appendChild(childrenContainer);
+            const expandIcon = rootItem.querySelector('.expand-icon');
+            expandIcon.textContent = '▼';
+            expandIcon.classList.add('expanded');
+        }
+    } else {
+        renderFileItems(files, container, basePath);
+    }
+}
+
+function renderFileItems(files, container, basePath) {
+    container.innerHTML = '';
+    files.forEach(file => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        let fullPath = basePath.endsWith('/') ? basePath + file.name : basePath + '/' + file.name;
+        item.dataset.path = normalizePath(fullPath);
+        if (file.kind === Module.vfs.EM_VFS_DIR) {
+            item.classList.add('directory');
+            const expandIcon = document.createElement('span');
+            expandIcon.className = 'expand-icon';
+            expandIcon.textContent = file.children ? '▼' : '▶';
+            if (file.children) expandIcon.classList.add('expanded');
+            item.appendChild(expandIcon);
+            const icon = document.createElement('span');
+            icon.className = 'file-icon';
+            icon.textContent = '📁';
+            item.appendChild(icon);
+            const name = document.createElement('span');
+            name.className = 'file-name';
+            name.textContent = file.name;
+            item.appendChild(name);
+            container.appendChild(item);
+            if (file.children) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'file-children expanded';
+                renderFileItems(file.children, childrenContainer, basePath + file.name + '/');
+                container.appendChild(childrenContainer);
+            }
+            expandIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleDirectory(item);
+            });
+        } else {
+            const icon = document.createElement('span');
+            icon.className = 'file-icon';
+            icon.textContent = getFileIcon(file.name);
+            item.appendChild(icon);
+            const name = document.createElement('span');
+            name.className = 'file-name';
+            name.textContent = file.name;
+            item.appendChild(name);
+            container.appendChild(item);
+        }
+        item.addEventListener('click', () => selectFile(item));
+        item.addEventListener('dblclick', () => openFile(item.dataset.path));
+        item.addEventListener('contextmenu', (e) => showContextMenu(e, item.dataset.path));
+    });
+}
+
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    switch (ext) {
+        case 'php': return '🐘';
+        case 'js': return '📜';
+        case 'json': return '📋';
+        case 'txt': return '📄';
+        case 'md': return '📝';
+        case 'html': case 'htm': return '🌐';
+        case 'css': return '🎨';
+        case 'sql': return '🗃️';
+        default: return '📄';
+    }
+}
+
+function toggleDirectory(item) {
+    const expandIcon = item.querySelector('.expand-icon');
+    const nextSibling = item.nextElementSibling;
+    if (nextSibling && nextSibling.classList.contains('file-children')) {
+        if (nextSibling.classList.contains('expanded')) {
+            nextSibling.classList.remove('expanded');
+            expandIcon.textContent = '▶';
+            expandIcon.classList.remove('expanded');
+        } else {
+            nextSibling.classList.add('expanded');
+            expandIcon.textContent = '▼';
+            expandIcon.classList.add('expanded');
+        }
+    }
+}
+
+function selectFile(item) {
+    document.querySelectorAll('.file-item.selected').forEach(el => {
+        el.classList.remove('selected');
+    });
+    item.classList.add('selected');
+}
+
+function openFile(path) {
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    let normPath = normalizePath(path);
+    const existingTab = openTabs.find(t => t.path === normPath);
+    if (existingTab) {
+        switchTab(normPath);
+        updateStatus(`Switched to: ${normPath}`, 'success');
+        return;
+    }
+    try {
+        const content = Module.vfs.get(normPath);
+        if (content === false) {
+            updateStatus(`Failed to open file: ${normPath}`, 'error');
+            return;
+        }
+        const decoder = new TextDecoder('utf-8');
+        const vfsContent = decoder.decode(content);
+
+        // Always create a fresh tab state from VFS content
+        const newTab = {
+            path: normPath,
+            name: normPath.split('/').pop(),
+            content: vfsContent,
+            vfsContent: vfsContent, // Keep track of last known VFS state
+            unsaved: false
+        };
+
+        // Replace existing tab or add new one
+        const existingIndex = openTabs.findIndex(t => t.path === normPath);
+        if (existingIndex !== -1) {
+            openTabs[existingIndex] = newTab;
+        } else {
+            openTabs.push(newTab);
+        }
+
+        switchTab(normPath);
+        updateStatus(`Opened: ${normPath}`, 'success');
+    } catch (error) {
+        console.error('Error opening file:', error);
+        updateStatus(`Error opening file: ${normPath}`, 'error');
+    }
+}
+
+async function saveCurrentFile() {
+    let filePath = currentOpenFile;
+    if (!filePath) {
+        let filename = '';
+        try {
+            filename = await modal.show(
+                'Save File',
+                'Enter a filename to save your code',
+                '',
+                { text: 'Save' },
+                { text: 'Cancel' }
+            );
+        } catch {
+            // Modal cancelled
+            updateStatus('Save cancelled', 'error');
+            return;
+        }
+        filename = (filename || '').trim();
+        if (!filename) {
+            updateStatus('Please enter a filename', 'error');
+            return;
+        }
+        filePath = filename;
+    }
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    filePath = normalizePath(filePath);
+    try {
+        const content = editor.getValue();
+        const success = Module.vfs.put(filePath, content);
+        if (success) {
+            unsavedChanges = false;
+            let tab = openTabs.find(t => t.path === filePath);
+            if (!tab) {
+                // If this was an untitled tab, update it to have a path
+                const untitledTab = openTabs.find(t => !t.path && t.name && t.content === content);
+                if (untitledTab) {
+                    untitledTab.path = filePath;
+                    untitledTab.name = filePath.split('/').pop();
+                    tab = untitledTab;
+                }
+            }
+            if (tab) {
+                tab.content = content;
+                tab.unsaved = false;
+            }
+            currentOpenFile = filePath;
+            updateCurrentFileDisplay();
+            updateStatus(`Saved: ${filePath}`, 'success');
+            refreshFileTree();
+            renderTabs();
+        } else {
+            updateStatus(`Failed to save: ${filePath}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving file:', error);
+        updateStatus(`Error saving file: ${filePath}`, 'error');
+    }
+}
+
+function updateCurrentFileDisplay() {
+    if (currentOpenFile) {
+        const filename = currentOpenFile.split('/').pop();
+        // Use the current tab's unsaved state for the indicator
+        const tab = openTabs.find(t => t.path === currentOpenFile);
+        const showDot = tab ? tab.unsaved : false;
+        currentFileElement.textContent = filename + (showDot ? ' •' : '');
+    } else {
+        currentFileElement.textContent = 'PHP Code Editor';
+    }
+    renderTabs();
+}
+
+function showContextMenu(e, path) {
+    e.preventDefault();
+    currentContextPath = path;
+    let isFile = false;
+    if (Module && Module.vfs && path) {
+        let testPath = path.endsWith('/') ? path.slice(0, -1) : path;
+        try {
+            let parentPath = testPath.substring(0, testPath.lastIndexOf('/') + 1);
+            let name = testPath.substring(testPath.lastIndexOf('/') + 1);
+            let iter = Module.vfs.iterate(parentPath);
+            let found = false;
+            if (iter.reset()) {
+                do {
+                    if (iter.name() === name) {
+                        isFile = (iter.kind() === Module.vfs.EM_VFS_FILE);
+                        found = true;
+                        break;
+                    }
+                } while (iter.next());
+            }
+            iter.free();
+        } catch (err) {}
+    }
+    const runMenuItem = contextMenu.querySelector('[data-action="run"]');
+    if (runMenuItem) {
+        runMenuItem.style.display = isFile ? '' : 'none';
+    }
+    contextMenu.style.display = 'block';
+    contextMenu.style.left = e.pageX + 'px';
+    contextMenu.style.top = e.pageY + 'px';
+}
+
+function hideContextMenu() {
+    contextMenu.style.display = 'none';
+}
+
+async function createFile() {
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    let filename = '';
+    try {
+        filename = await modal.show(
+            'New File',
+            '',
+            '',
+            { text: 'Create' },
+            { text: 'Cancel' }
+        );
+    } catch {
+        // Modal cancelled
+        return;
+    }
+    filename = (filename || '').trim();
+    if (!filename) {
+        updateStatus('Please enter a filename', 'error');
+        return;
+    }
+    try {
+        const success = Module.vfs.put(
+            filename,
+            '<?php\n// New PHP file\necho "Hello from ' + filename + '!";\n?>'
+        );
+        if (success) {
+            refreshFileTree();
+            openFile(filename);
+            updateStatus(`Created: ${filename}`, 'success');
+        } else {
+            updateStatus(`Failed to create: ${filename}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error creating file:', error);
+        updateStatus(`Error creating file: ${filename}`, 'error');
+    }
+}
+
+async function createFolder() {
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    let foldername = '';
+    try {
+        foldername = await modal.show(
+            'New Folder',
+            '',
+            '',
+            { text: 'Create' },
+            { text: 'Cancel' }
+        );
+    } catch {
+        // Modal cancelled
+        return;
+    }
+    foldername = (foldername || '').trim();
+    if (!foldername) {
+        updateStatus('Please enter a folder name', 'error');
+        return;
+    }
+    const path = foldername.endsWith("/") ? foldername : foldername + "/";
+    try {
+        const success = Module.vfs.mkdir(path);
+        if (success) {
+            refreshFileTree();
+            updateStatus(`Created folder: ${foldername}`, 'success');
+        } else {
+            updateStatus(`Failed to create folder: ${foldername}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        updateStatus(`Error creating folder: ${foldername}`, 'error');
+    }
+}
+
+function performRename(newName) {
+    if (!currentContextPath) {
+        return;
+    }
+    newName = (newName || '').trim();
+    if (!newName) {
+        updateStatus('Please enter a new name', 'error');
+        return;
+    }
+    
+    let newPath;
+    if (newName.startsWith('/')) {
+        // Absolute path - use as is
+        newPath = normalizePath(newName);
+    } else {
+        // Relative path - resolve relative to current file's directory
+        const parentDir = currentContextPath.substring(0, currentContextPath.lastIndexOf('/'));
+        if (newName.includes('/')) {
+            // If relative path contains directories, resolve against parent
+            newPath = normalizePath(parentDir + '/' + newName);
+        } else {
+            // Simple rename in same directory
+            newPath = parentDir + '/' + newName;
+        }
+    }
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    try {
+        const success = Module.vfs.move(currentContextPath, newPath);
+        if (success) {
+            if (currentOpenFile === currentContextPath) {
+                currentOpenFile = newPath;
+                updateCurrentFileDisplay();
+            }
+            refreshFileTree();
+            updateStatus(`Renamed to: ${newName}`, 'success');
+        } else {
+            updateStatus(`Failed to rename: ${currentContextPath}`, 'error');
+        }
+    } catch (error) {
+        updateStatus(`Error renaming: ${currentContextPath}`, 'error');
+    }
+}
+
+function renameFile() {
+    if (!currentContextPath) return;
+    const currentName = currentContextPath.split('/').pop();
+    (async () => {
+        let newName = '';
+        try {
+            newName = await modal.show(
+                'Rename',
+                '',
+                '',
+                { text: 'Rename' },
+                { text: 'Cancel' }
+            );
+        } catch {
+            return;
+        }
+        newName = (newName || '').trim();
+        if (!newName) {
+            updateStatus('Please enter a new name', 'error');
+            return;
+        }
+        performRename(newName);
+    })();
+}
+
+function deleteFile() {
+    if (!currentContextPath) return;
+    if (!confirm(`Are you sure you want to delete ${currentContextPath}?`)) {
+        return;
+    }
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    try {
+        const success = Module.vfs.unlink(currentContextPath, true);
+        if (success) {
+            if (currentOpenFile === currentContextPath) {
+                currentOpenFile = null;
+                unsavedChanges = false;
+                updateCurrentFileDisplay();
+                editor.setValue('');
+            }
+            refreshFileTree();
+            updateStatus(`Deleted: ${currentContextPath}`, 'success');
+        } else {
+            updateStatus(`Failed to delete: ${currentContextPath}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting file:', error);
+        updateStatus(`Error deleting: ${currentContextPath}`, 'error');
+    }
+}
+
+function initializeEventHandlers() {
+    phpVersionSelect.value = currentPHPVersion;
+    phpVersionSelect.addEventListener('change', switchPHPVersion);
+    runButton.addEventListener('click', runCode);
+    clearOutputButton.addEventListener('click', clearOutput);
+    resetVFSButton.addEventListener('click', () => {
+        resetVFS();
+        refreshFileTree();
+    });
+    demoSelect.addEventListener('change', loadDemo);
+    newFileButton.addEventListener('click', () => {
+        createFile();
+    });
+    newFolderButton.addEventListener('click', () => {
+        createFolder();
+    });
+    refreshFilesButton.addEventListener('click', refreshFileTree);
+    // All modal OK/cancel logic is now handled by Modal class
+    document.addEventListener('click', hideContextMenu);
+    contextMenu.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const item = e.target.closest('.context-menu-item');
+        if (!item) return;
+        const action = item.dataset.action;
+        switch (action) {
+            case 'run':
+                runFile(currentContextPath);
+                break;
+            case 'open':
+                openFile(currentContextPath);
+                break;
+            case 'rename':
+                renameFile();
+                break;
+            case 'delete':
+                deleteFile();
+                break;
+        }
+        hideContextMenu();
+    });
+    const rootItem = fileTree.querySelector('.file-item');
+    rootItem.addEventListener('click', () => selectFile(rootItem));
+    const rootExpandIcon = rootItem.querySelector('.expand-icon');
+    rootExpandIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDirectory(rootItem);
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            switch (e.key) {
+                case 's':
+                    e.preventDefault();
+                    saveCurrentFile();
+                    break;
+                case 'n':
+                    e.preventDefault();
+                    createFile();
+                    break;
+                case 't':
+                    e.preventDefault();
+                    let baseName = 'untitled.php';
+                    let name = baseName;
+                    let counter = 1;
+                    while (openTabs.some(t => !t.path && t.name === name)) {
+                        name = baseName.replace('.php', `-${counter}.php`);
+                        counter++;
+                    }
+                    openTabs.push({ path: null, name, content: '', unsaved: true });
+                    switchTab(null, name);
+                    break;
+            }
+        }
+    });
+}
+
+function switchPHPVersion() {
+    const newVersion = phpVersionSelect.value;
+    if (newVersion !== currentPHPVersion) {
+        const url = new URL(window.location);
+        url.searchParams.set('php', newVersion);
+        if (editor) {
+            sessionStorage.setItem('em-demo-code', editor.getValue());
+        }
+        window.location = url;
+    }
+}
+
+function loadDemo() {
+    const selectedDemo = demoSelect.value;
+    if (selectedDemo && demos[selectedDemo]) {
+        let baseName = `untitled-${selectedDemo}.php`;
+        let name = baseName;
+        let counter = 1;
+        while (openTabs.some(t => !t.path && t.name === name)) {
+            name = baseName.replace('.php', `-${counter}.php`);
+            counter++;
+        }
+        openTabs.push({ path: null, name, content: demos[selectedDemo], unsaved: true });
+        switchTab(null, name);
+        demoSelect.value = '';
+        updateStatus(`Demo loaded: ${name}`, 'success');
+    }
+}
+
+function clearOutput() {
+    output.textContent = '';
+    outputStatus.textContent = '';
+}
+
+function updateStatus(message, type) {
+    if (!statusBar) return;
+    statusBar.textContent = message;
+    statusBar.classList.remove('loading', 'error', 'success');
+    if (type) {
+        statusBar.classList.add(type);
+    }
+}
+
+// Run a file using Module.include and display output
+function runFile(path) {
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    try {
+        updateStatus(`Running: ${path}`, 'loading');
+        outputStatus.textContent = 'Running...';
+        const result = Module.include(path);
+        output.textContent = result;
+        updateStatus(`Ran: ${path}`, 'success');
+        outputStatus.textContent = 'Complete';
+    } catch (error) {
+        output.textContent = `Error: ${error.message}`;
+        updateStatus(`Execution failed: ${path}`, 'error');
+        outputStatus.textContent = 'Error';
+        console.error('Execution error:', error);
+    }
+}
+
+function initializeEditor() {
+    editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
+        mode: 'application/x-httpd-php',
+        theme: 'monokai',
+        lineNumbers: true,
+        indentUnit: 4,
+        indentWithTabs: false,
+        lineWrapping: true,
+        extraKeys: {
+            'Ctrl-Enter': runCode,
+            'Cmd-Enter': runCode,
+            'Ctrl-S': saveCurrentFile,
+            'Cmd-S': saveCurrentFile
+        }
+    });
+    editor.on('change', () => {
+        if (currentOpenFile) {
+            const tab = openTabs.find(t => t.path === currentOpenFile);
+            if (tab && tab.vfsContent !== undefined) {
+                // Only mark as unsaved if content actually differs from VFS content
+                const currentContent = editor.getValue();
+                tab.unsaved = (currentContent !== tab.vfsContent);
+                unsavedChanges = tab.unsaved;
+                updateCurrentFileDisplay();
+            }
+        }
+    });
+    const savedCode = sessionStorage.getItem('em-demo-code');
+    if (savedCode) {
+        editor.setValue(savedCode);
+        sessionStorage.removeItem('em-demo-code');
+    } else {
+        editor.setValue(demos.hello);
+    }
+    renderTabs();
+}
+
+
+function initializeGithubButton() {
+    const githubBtn = document.getElementById('githubBtn');
+    const githubContextMenu = document.getElementById('githubContextMenu');
+    let contextMenuVisible = false;
+
+    githubBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Position context menu below the button
+        const rect = githubBtn.getBoundingClientRect();
+        githubContextMenu.style.left = rect.left + 'px';
+        githubContextMenu.style.top = (rect.bottom + window.scrollY) + 'px';
+        githubContextMenu.style.display = 'block';
+        contextMenuVisible = true;
+    });
+
+    // Hide menu on click elsewhere
+    document.addEventListener('click', (e) => {
+        if (contextMenuVisible) {
+            githubContextMenu.style.display = 'none';
+            contextMenuVisible = false;
+        }
+    });
+
+    githubContextMenu.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const item = e.target.closest('.context-menu-item');
+        if (!item) return;
+        githubContextMenu.style.display = 'none';
+        contextMenuVisible = false;
+        switch (item.dataset.action) {
+            case 'set-token': {
+                let token = '';
+                try {
+                    token = await modal.show(
+                        'Set GitHub Token',
+                        'Paste your GitHub personal access token',
+                        githubToken || '',
+                        { text: 'Save' },
+                        { text: 'Cancel' }
+                    );
+                } catch {
+                    return;
+                }
+                token = (token || '').trim();
+                if (token) {
+                    githubToken = token;
+                    localStorage.setItem('em-github-token', token);
+                    updateStatus('GitHub token saved', 'success');
+                }
+                break;
+            }
+            case 'load-repo': {
+                let repoInput = '';
+                try {
+                    repoInput = await modal.show(
+                        'Load from GitHub Repo',
+                        'user/repo or full URL',
+                        '',
+                        { text: 'Load' },
+                        { text: 'Cancel' }
+                    );
+                } catch {
+                    return;
+                }
+                repoInput = (repoInput || '').trim();
+                if (repoInput) {
+                    loadGithubRepo(repoInput);
+                }
+                break;
+            }
+            case 'load-gist': {
+                let gistInput = '';
+                try {
+                    gistInput = await modal.show(
+                        'Load from GitHub Gist',
+                        'gist id or gist URL',
+                        '',
+                        { text: 'Load' },
+                        { text: 'Cancel' }
+                    );
+                } catch {
+                    return;
+                }
+                gistInput = (gistInput || '').trim();
+                if (gistInput) {
+                    loadGithubGist(gistInput);
+                }
+                break;
+            }
+        }
+    });
+}
+
+// Store GitHub token in localStorage
+let githubToken = localStorage.getItem('em-github-token') || '';
+
+
+
+
+// Progress bar logic
+let progressBar = null;
+function showProgressBar(label, max) {
+    if (!progressBar) {
+        progressBar = document.createElement('div');
+        progressBar.className = 'progress-bar-overlay';
+        progressBar.innerHTML = `
+            <div class="progress-bar-container">
+                <span class="progress-bar-label"></span>
+                <div class="progress-bar-track"><div class="progress-bar-fill"></div></div>
+            </div>
+        `;
+        document.body.appendChild(progressBar);
+    }
+    progressBar.style.display = 'flex';
+    progressBar.querySelector('.progress-bar-label').textContent = label;
+    progressBar.querySelector('.progress-bar-fill').style.width = '0%';
+    progressBar.max = max;
+    progressBar.value = 0;
+}
+function updateProgressBar(label, value, max) {
+    if (!progressBar) return;
+    progressBar.querySelector('.progress-bar-label').textContent = label;
+    const percent = max ? Math.round((value / max) * 100) : 0;
+    progressBar.querySelector('.progress-bar-fill').style.width = percent + '%';
+}
+function hideProgressBar() {
+    if (progressBar) progressBar.style.display = 'none';
+}
+
+// Load a GitHub repo (user/repo or URL) using API for file content (no CORS issues)
+async function loadGithubRepo(repoInput) {
+    let repo = repoInput;
+    if (repo.startsWith('https://github.com/')) {
+        repo = repo.replace('https://github.com/', '').replace(/\.git$/, '');
+    }
+    repo = repo.replace(/^\//, '').replace(/\/$/, '');
+    if (!repo.match(/^[\w.-]+\/[\w.-]+$/)) {
+        updateStatus('Invalid repo format', 'error');
+        return;
+    }
+    showProgressBar('Fetching repo file list...', 1);
+    try {
+        let branch = 'main';
+        let repoMeta = await githubApiRequest(`/repos/${repo}`);
+        if (repoMeta && repoMeta.default_branch) branch = repoMeta.default_branch;
+        let tree = await githubApiRequest(`/repos/${repo}/git/trees/${branch}?recursive=1`);
+        if (!tree || !tree.tree) throw new Error('No tree found');
+        Module.vfs.reset();
+        let fileEntries = tree.tree.filter(e => e.type === 'blob');
+        let dirEntries = tree.tree.filter(e => e.type === 'tree');
+        // Create directories first
+        for (const dir of dirEntries) {
+            Module.vfs.mkdir('/' + dir.path + '/');
+        }
+        let fileCount = 0;
+        let total = fileEntries.length;
+        for (let i = 0; i < fileEntries.length; i++) {
+            const entry = fileEntries[i];
+            updateProgressBar(`Fetching: ${entry.path}`, i, total);
+            // Use GitHub API to fetch file content (avoid CORS)
+            let blob = await githubApiRequest(`/repos/${repo}/git/blobs/${entry.sha}`);
+            let content = '';
+            if (blob.encoding === 'base64') {
+                content = atob(blob.content.replace(/\n/g, ''));
+            } else {
+                content = blob.content;
+            }
+            Module.vfs.put('/' + entry.path, content);
+            fileCount++;
+        }
+        refreshFileTree();
+        updateStatus(`Loaded ${fileCount} files from ${repo}`, 'success');
+    } catch (err) {
+        updateStatus('GitHub repo load failed: ' + err.message, 'error');
+    } finally {
+        hideProgressBar();
+    }
+}
+
+// Load a GitHub gist (id or URL) with progress bar
+async function loadGithubGist(gistInput) {
+    let gistId = gistInput;
+    if (gistId.startsWith('https://gist.github.com/')) {
+        gistId = gistId.split('/').pop();
+    }
+    gistId = gistId.replace(/\/.*/, '');
+    if (!gistId.match(/^[a-fA-F0-9]+$/)) {
+        updateStatus('Invalid gist id', 'error');
+        return;
+    }
+    showProgressBar('Fetching gist...', 1);
+    try {
+        let gist = await githubApiRequest(`/gists/${gistId}`);
+        if (!gist || !gist.files) throw new Error('No files in gist');
+        Module.vfs.reset();
+        let files = Object.entries(gist.files);
+        let fileCount = 0;
+        let total = files.length;
+        for (let i = 0; i < files.length; i++) {
+            const [fname, file] = files[i];
+            updateProgressBar(`Fetching: ${fname}`, i, total);
+            if (file && file.content !== undefined) {
+                Module.vfs.put('/' + fname, file.content);
+                fileCount++;
+            }
+        }
+        refreshFileTree();
+        updateStatus(`Loaded ${fileCount} files from gist ${gistId}`, 'success');
+    } catch (err) {
+        updateStatus('GitHub gist load failed: ' + err.message, 'error');
+    } finally {
+        hideProgressBar();
+    }
+}
+
+// Helper: GitHub API request (uses token if set)
+async function githubApiRequest(path) {
+    const url = 'https://api.github.com' + path;
+    const headers = { 'Accept': 'application/vnd.github.v3+json' };
+    if (githubToken) headers['Authorization'] = 'token ' + githubToken;
+    const resp = await fetch(url, { headers });
+    if (!resp.ok) throw new Error(`GitHub API error: ${resp.status}`);
+    return await resp.json();
+}
+
+function runCode() {
+    if (!isReady || !Module) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    const code = editor.getValue().trim();
+    if (!code) {
+        updateStatus('No code to run', 'error');
+        return;
+    }
+    if (currentOpenFile) {
+        const tab = openTabs.find(t => t.path === currentOpenFile);
+        if (tab && (tab.unsaved || tab.content !== editor.getValue())) {
+            const shouldSave = confirm('You have unsaved changes. Save before running?');
+            if (shouldSave) {
+                const content = editor.getValue();
+                const success = Module.vfs.put(currentOpenFile, content);
+                if (success) {
+                    tab.content = content;
+                    tab.unsaved = false;
+                    unsavedChanges = false;
+                    updateCurrentFileDisplay();
+                    updateStatus(`Saved: ${currentOpenFile}`, 'success');
+                    refreshFileTree();
+                    renderTabs();
+                } else {
+                    updateStatus(`Failed to save: ${currentOpenFile}`, 'error');
+                    return;
+                }
+            } else {
+                updateStatus('Run cancelled (unsaved changes)', 'error');
+                return;
+            }
+        }
+        runButton.disabled = true;
+        updateStatus(`Running: ${currentOpenFile}`, 'loading');
+        outputStatus.textContent = 'Running...';
+        try {
+            const result = Module.include(currentOpenFile);
+            output.textContent = result;
+            updateStatus(`Ran: ${currentOpenFile}`, 'success');
+            outputStatus.textContent = 'Complete';
+        } catch (error) {
+            output.textContent = `Error: ${error.message}`;
+            updateStatus(`Execution failed: ${currentOpenFile}`, 'error');
+            outputStatus.textContent = 'Error';
+            console.error('Execution error:', error);
+        } finally {
+            runButton.disabled = false;
+            refreshFileTree();
+        }
+    } else {
+        runButton.disabled = true;
+        updateStatus('Running code...', 'loading');
+        outputStatus.textContent = 'Running...';
+        try {
+            const result = Module.invoke(code);
+            output.textContent = result;
+            updateStatus('Code executed successfully', 'success');
+            outputStatus.textContent = 'Complete';
+        } catch (error) {
+            output.textContent = `Error: ${error.message}`;
+            updateStatus('Execution failed', 'error');
+            outputStatus.textContent = 'Error';
+            console.error('Execution error:', error);
+        } finally {
+            runButton.disabled = false;
+            refreshFileTree();
+        }
+    }
+}
+
+function loadPHPRuntime() {
+    updateStatus(`Loading PHP ${currentPHPVersion}...`, 'loading');
+    if (typeof editorStatus !== 'undefined' && editorStatus) editorStatus.textContent = 'Loading...';
+    const script = document.createElement('script');
+    script.src = `./latest/${currentPHPVersion}/php-em.js`;
+    script.onload = () => {
+        const checkReady = () => {
+            if (typeof Module !== 'undefined' && Module && Module.ready) {
+                isReady = true;
+                updateStatus(`PHP ${currentPHPVersion} ready - Press Ctrl+Enter to run code`, 'success');
+                if (typeof editorStatus !== 'undefined' && editorStatus) editorStatus.textContent = `PHP ${currentPHPVersion}`;
+                runButton.disabled = false;
+                output.textContent = 'Ready! Click "Run Code" or press Ctrl+Enter to execute PHP code.';
+                if (typeof newFileButton !== 'undefined' && newFileButton) newFileButton.disabled = false;
+                if (typeof newFolderButton !== 'undefined' && newFolderButton) newFolderButton.disabled = false;
+                if (typeof refreshFilesButton !== 'undefined' && refreshFilesButton) refreshFilesButton.disabled = false;
+                refreshFileTree();
+            } else {
+                setTimeout(checkReady, 100);
+            }
+        };
+        checkReady();
+    };
+    script.onerror = () => {
+        updateStatus(`Failed to load PHP ${currentPHPVersion}`, 'error');
+        if (typeof editorStatus !== 'undefined' && editorStatus) editorStatus.textContent = 'Error';
+        output.textContent = `Failed to load PHP ${currentPHPVersion}. Make sure the files are available at ./latest/${currentPHPVersion}/php-em.js`;
+    };
+    document.head.appendChild(script);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initializeEditor();
+    initializeEventHandlers();
+    initializeGithubButton();
+    loadPHPRuntime();
+});

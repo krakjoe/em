@@ -40,6 +40,103 @@ Module.startup = function() {
 };
 
 /**
+ * Shall include a file from the vfs
+ * @param {string} script 
+ * @param {HTMLElement|Function|undefined} output
+ * @returns string
+ */
+Module.include = function(script, output) {
+    // Fire start event
+    Module.dispatchEvent(new CustomEvent('include.begin', { 
+        detail: { 
+            "script": script,
+            "output": output 
+        }
+    }));
+
+    // run the include, getting response address and length in return
+    let result = {
+        address: Module.ccall(
+            'em_run_script',
+            'number',
+            [ 'string' ],
+            [ script ]),
+        length: Module.ccall(
+            'em_run_length', 'number')
+    };
+
+    // check for errors
+    if (result.address < 0) {
+        // Fire error event
+        Module.dispatchEvent(new CustomEvent('include.error', { 
+            detail: { 
+                "script": script,
+                "output": output,
+                "result": result }
+        }));
+
+        // we don't need to care about freeing, nothing was allocated
+        throw new Error("Unexpected result, include failed");
+    }
+
+    // ensure there's stuff to read on the heap
+    if (!result.length) {
+        // Fire error event
+        Module.dispatchEvent(new CustomEvent('include.error', { 
+            detail: { 
+                "script": script,
+                "output": output,
+                "result": result }
+        }));
+
+        // we don't need to care about freeing, nothing was allocated
+        throw new Error("Unexpected result, no output");
+    }
+
+    let text = null;
+
+    try {
+        // This ensures consistent encoding handling
+        text = Module.iou.fromBytes(result.address, result.length);
+    } catch (exception) {
+        // Fire exception event
+        Module.dispatchEvent(new CustomEvent('include.exception', { 
+            detail: { 
+                "script": script,
+                "output": output,
+                "result": result,
+                "exception": exception }
+        }));
+
+        throw exception;
+    } finally {
+        // release the buffer that em alloc'd
+        Module.ccall('em_run_free');
+    }
+
+   // Fire end event
+    Module.dispatchEvent(new CustomEvent('include.end', { 
+        detail: { 
+            "script":  script,
+            "output": output,
+            "text":   text }
+    }));
+
+    if (typeof output === 'undefined') {
+        return text;
+    } else if (typeof HTMLElement !== 'undefined' &&
+        output instanceof HTMLElement) {
+        return output.textContent = text;
+    } else if (typeof output === 'function') {
+        return output(text);
+    }
+
+    throw new TypeError(
+        "Unexpected output type, " +
+        "expected HTMLElement|Function|undefined");   
+}
+
+/**
  * Shall invoke code
  * 
  * Where input is HTMLTextAreaElement:
