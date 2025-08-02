@@ -23,7 +23,7 @@ let editor = null;
 let currentModalAction = null;
 let currentContextPath = null;
 let isReady = false;
-let currentPHPVersion = '8.3';
+let currentPHPVersion;
 
 const tabBar = document.getElementById('tabBar');
 const phpVersionSelect = document.getElementById('phpVersion');
@@ -726,9 +726,12 @@ function switchPHPVersion() {
         const url = new URL(window.location);
         url.searchParams.set('php', newVersion);
         if (editor) {
-            sessionStorage.setItem('em-demo-code', editor.getValue());
+            const currentCode = editor.getValue();
+            if (currentCode) {
+                sessionStorage.setItem('em-demo-code', currentCode);
+            }
         }
-        window.location = url;
+        window.location.href = url.toString();
     }
 }
 
@@ -1152,6 +1155,9 @@ function loadPHPRuntime() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Get PHP version from URL or default to 8.3
+    const params = new URL(window.location).searchParams;
+    currentPHPVersion = params.get('php') || '8.3';
     initializeEditor();
     initializeEventHandlers();
     initializeGithubButton();
