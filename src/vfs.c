@@ -91,7 +91,7 @@ em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
     return current;
 }
 
-static zend_result em_vfs_stat(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bool link) {
+zend_result em_vfs_stat_path(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bool link) {
     // If no filename specified, we're statting the directory itself
     if (!vpath->filename || strlen(vpath->filename) == 0) {
         em_vfs_node_t* directory = em_vfs_resolve(vpath, false);
@@ -100,7 +100,7 @@ static zend_result em_vfs_stat(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bo
         }
         return em_vfs_node_stat(directory, ssb, link);
     }
-    
+
     // Look for file/subdirectory in parent directory
     em_vfs_node_t* parent = em_vfs_resolve(vpath, false);
     if (!parent || parent->kind != EM_VFS_DIR) {
@@ -324,12 +324,7 @@ static int em_vfs_stream_close(php_stream *stream, int type) {
     return 0;
 }
 
-static int em_vfs_stream_seek(
-    php_stream* stream, zend_off_t offset, int whence, zend_off_t *position) {
-    em_vfs_abstract_t* abstract =
-        (em_vfs_abstract_t*)
-            stream->abstract;
-
+zend_result em_vfs_seek(em_vfs_abstract_t* abstract, zend_off_t offset, int whence, zend_off_t *position) {
     if (!abstract) {
         return FAILURE;
     }
@@ -358,6 +353,11 @@ static int em_vfs_stream_seek(
     abstract->position = (*position);
 
     return SUCCESS;
+}
+
+static int em_vfs_stream_seek(
+    php_stream* stream, zend_off_t offset, int whence, zend_off_t *position) {
+    return em_vfs_seek(stream->abstract, offset, whence, position);
 }
 
 static int em_vfs_stream_stat(php_stream *stream, php_stream_statbuf *ssb) {
@@ -444,7 +444,7 @@ static int em_vfs_wrapper_stat_uri(
     }
 
     int result =
-        em_vfs_stat(vpath, ssb, 1);
+        em_vfs_stat_path(vpath, ssb, 1);
     em_vfs_path_release(vpath);
     return result;
 }
@@ -464,6 +464,21 @@ static int em_vfs_wrapper_rename(
     return em_vfs_move(from, to);
 }
 
+static int em_vfs_wrapper_mkdir(
+    php_stream_wrapper* wrapper,
+    const char* url,
+    int mode, int options,
+    php_stream_context* context) {
+    return em_vfs_mkdir(url);
+}
+
+static int em_vfs_wrapper_rmdir(
+    php_stream_wrapper* wrapper,
+    const char* url, int options, 
+    php_stream_context* context) {
+    return em_vfs_unlink(url, true);
+}
+
 static php_stream_wrapper_ops em_vfs_wrapper_ops = {
     em_vfs_wrapper_open,
     NULL,
@@ -473,6 +488,9 @@ static php_stream_wrapper_ops em_vfs_wrapper_ops = {
     "em-vfs",
     em_vfs_wrapper_unlink,
     em_vfs_wrapper_rename,
+    em_vfs_wrapper_mkdir,
+    em_vfs_wrapper_rmdir,
+    NULL,
 };
 
 static php_stream_wrapper em_vfs_wrapper = {
@@ -485,6 +503,7 @@ void em_vfs_startup(void) {
 #ifdef HAVE_EM_SQLITE_VFS
     em_sqlite_vfs_register();
 #endif
+
     em_vfs = pecalloc(1, sizeof(em_vfs_node_t), 1);
     em_vfs->kind = EM_VFS_DIR;
     em_vfs->name = pestrdup("/", 1);

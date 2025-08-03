@@ -139,6 +139,8 @@ php_stream* em_vfs_wrapper_opendir(
         return NULL;
     }
     
+    fprintf(stderr, "opendir(%s)\n", filename);
+
     em_vfs_node_t* directory = NULL;
     
     // If no filename part, we want the directory itself

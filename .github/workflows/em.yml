@@ -44,6 +44,7 @@ jobs:
           with: >
             ctype zlib bz2 sqlite3 pdo pdo-sqlite
             phar mbstring calendar bcmath opcache
+            zip
 
       - name: Test em (${{ matrix.php }})
         run: |

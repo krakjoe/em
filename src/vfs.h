@@ -58,6 +58,7 @@ ssize_t EMSCRIPTEN_KEEPALIVE
     em_vfs_get_length(const char* path);
 void EMSCRIPTEN_KEEPALIVE em_vfs_reset(void);
 
+zend_result em_vfs_stat_path(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bool link);
 em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make);
 
 em_vfs_abstract_t* em_vfs_open(const char* path, const char* mode);
@@ -69,6 +70,7 @@ static inline ssize_t em_vfs_read(em_vfs_abstract_t* abstract, char* buffer, siz
 static inline ssize_t em_vfs_write(em_vfs_abstract_t* abstract, const char* buffer, size_t count) {
     return em_vfs_write_offset(abstract, buffer, count, abstract->position);
 }
+zend_result em_vfs_seek(em_vfs_abstract_t* abstract, zend_off_t offset, int whence, zend_off_t *position);
 ssize_t em_vfs_truncate(em_vfs_abstract_t* abstract, size_t count);
 ssize_t em_vfs_flush(em_vfs_abstract_t* abstract);
 void em_vfs_close(em_vfs_abstract_t* abstract, bool sync);

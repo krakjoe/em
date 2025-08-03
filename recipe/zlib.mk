@@ -27,10 +27,8 @@ EM_ZLIB_CONFIGURE ?= --with-zlib=static,$(EM_ZLIB_SRC)
 EM_ZLIB_CONFIGURED  = $(EM_ZLIB_SRC)/Makefile
 EM_ZLIB_MADE        = $(EM_ZLIB_SRC)/libz.a
 ########################################################################
-.PHONY: all-zlib clean-zlib
+.PHONY: clean-zlib
 ########################################################################
-all-zlib: install-zlib
-
 $(EM_ZLIB_TAR):
 	wget $(EM_ZLIB_URL) -O $(EM_ZLIB_TAR)
 	mkdir -p $(EM_ZLIB_SRC)
