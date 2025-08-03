@@ -154,7 +154,7 @@ $(EM_RECIPE_LINK_OBJECTS): %.lo: %.c $(EM_PHP_DIR)/.libs/libphp.a
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
-$(EM_PHP_DIR)/.libs/libphp.a.stamp: $(EM_SRC_DIR)/stub.lo $(EM_RECIPE_BUILD_OBJECTS)
+$(EM_PHP_DIR)/.libs/libphp.a.stamp: $(EM_SRC_DIR)/stub.lo $(EM_RECIPE_BUILD_RULES) $(EM_RECIPE_BUILD_OBJECTS)
 	@$(EMMAKE) make -C $(EM_PHP_DIR) -j$(EM_PHP_PROC)
 	@touch $@
 
@@ -205,7 +205,7 @@ build: $(EM_PHP_DIR)/.libs/libphp.a
 
 api: $(EM_SRC_DIR)/api.lo
 
-bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
+bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_RULES) $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --preserve-dup-deps --mode=link --tag=CC \
 	$(CC) -o $(EM_ROOT_DIR)/php-em.js --post-js=$(EM_SRC_DIR)/stub.js $(EM_RECIPE_LINK_OBJECTS) \
 		-s EXPORTED_FUNCTIONS='$(EM_EXPORT_FUNCTIONS)' \
@@ -250,7 +250,7 @@ clean-php:
 clean-deps:
 	@rm -rf config.deps
 
-clean: clean-recipes clean-objects clean-bin clean-php clean-deps
+clean: clean-recipes clean-objects clean-bin clean-deps
 	@$(EMMAKE) make \
 		-C $(EM_PHP_DIR) clean
 	@echo "The build area is clean"

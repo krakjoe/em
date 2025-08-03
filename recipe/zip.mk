@@ -78,7 +78,7 @@ clean-zip:
 # Setup recipe
 ########################################################################
 $(eval $(call EM_RECIPE_ADD_CONFIGURE, $(EM_ZIP_CONFIGURE)))
-$(eval $(call EM_RECIPE_ADD_TARGET,    rebuild-zip))
+$(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_ZIP_LIB)))
 $(eval $(call EM_RECIPE_ADD_LIB,       $(EM_ZIP_LIB)))
 $(eval $(call EM_RECIPE_ADD_CLEANER,   clean-zip))
 $(eval $(call EM_RECIPE_ADD_CFLAGS,    -DHAVE_EM_ZIP_VFS))
@@ -87,6 +87,7 @@ $(eval $(call EM_RECIPE_ADD_CFLAGS,    -I$(EM_ZIP_SRC)/include))
 $(eval $(call EM_RECIPE_ADD_CFLAGS,    -I$(EM_ZIP_SRC)/lib))
 $(eval $(call EM_RECIPE_ADD_DEP,       zip, EM_ZLIB_SRC))
 $(eval $(call EM_RECIPE_ADD_DEP,       zip, EM_ZLIB_LIB))
+$(eval $(call EM_RECIPE_ADD_BUILD_RULE,rebuild-zip))
 ########################################################################
 # Export for php
 ########################################################################

@@ -48,6 +48,12 @@
 #     This should be used where a stub is required for the final link
 #	  Will ignore duplicates
 #
+#   EM_RECIPE_ADD_BUILD_RULE(rule)
+#     Shall append a build rule
+#  
+#   EM_RECIPE_ADD_LINK_RULE(rule)
+#     Shall append a link rule
+#
 #   EM_RECIPE_ADD_CFLAGS(flags)
 #     Shall append flags to the CFLAGS used while compiling (stubs)
 #
@@ -119,6 +125,24 @@ define EM_RECIPE_ADD_LINK
 ifeq ($(filter $(1),$(EM_RECIPE_LINK_SOURCE)),)
 EM_RECIPE_LINK_SOURCE  += $(1)
 EM_RECIPE_LINK_OBJECTS += $(1:.c=.lo)
+endif
+endef
+########################################################################
+# EM_RECIPE_ADD_BUILD_RULE
+########################################################################
+EM_RECIPE_BUILD_RULES   ?=
+define EM_RECIPE_ADD_BUILD_RULE
+ifeq ($(filter $(1),$(EM_RECIPE_BUILD_RULES)),)
+EM_RECIPE_BUILD_RULES  += $(1)
+endif
+endef
+########################################################################
+# EM_RECIPE_ADD_LINK_RULE
+########################################################################
+EM_RECIPE_LINK_RULES   ?=
+define EM_RECIPE_ADD_LINK_RULE
+ifeq ($(filter $(1),$(EM_RECIPE_LINK_RULES)),)
+EM_RECIPE_LINK_RULES  += $(1)
 endif
 endef
 ########################################################################
