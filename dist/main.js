@@ -16,14 +16,14 @@ const demos = {
 const modal = new Modal();
 
 // 2. Global state variables
+let currentOpenTab = null;
 let currentOpenFile = null;
 let openTabs = [];
-let unsavedChanges = false;
 let editor = null;
-let currentModalAction = null;
 let currentContextPath = null;
 let isReady = false;
 let currentPHPVersion;
+let vfsDecoder = new TextDecoder('utf-8');
 
 const tabBar = document.getElementById('tabBar');
 const phpVersionSelect = document.getElementById('phpVersion');
@@ -58,127 +58,123 @@ function resetVFS() {
 }
 
 function normalizePath(path) {
-    if (!path) return '';
-    let p = path.replace(/^vfs:\/\//, '');
-    if (!p.startsWith('/')) p = '/' + p;
-    p = p.replace(/\/+/g, '/');
-    return p;
+    if (!path || !path.length)
+        return null;
+
+    let normal = path.replace(/^vfs:\/\//, '');
+
+    if (!normal.startsWith('/')) {
+        normal = '/' + normal;
+    }
+
+    normal = normal.replace(/\/+/g, '/');
+
+    return normal;
 }
 
 function renderTabs() {
-    if (!tabBar) return;
     tabBar.innerHTML = '';
-    openTabs.forEach(tab => {
-        const tabElem = document.createElement('div');
-        tabElem.className = 'tab' + (currentOpenFile === tab.path ? ' active' : '');
-        tabElem.textContent = tab.name + (tab.unsaved ? ' •' : '');
-        tabElem.style.padding = '0.5em 1em';
-        tabElem.style.cursor = 'pointer';
-        tabElem.style.background = currentOpenFile === tab.path ? '#232f3e' : 'transparent';
-        tabElem.style.borderRight = '1px solid #404040';
-        tabElem.onclick = () => switchTab(tab.path, tab.name);
-        // Close button
-        const closeBtn = document.createElement('span');
-        closeBtn.textContent = ' ×';
-        closeBtn.style.cursor = 'pointer';
-        closeBtn.style.marginLeft = '0.5em';
-        closeBtn.onclick = (e) => {
-            e.stopPropagation();
-            closeTab(tab.path);
+    openTabs.forEach((tab, index) => {
+        // Handle in open tabs
+        tab.index = index;
+
+        // Handle in tab list (DOM)
+        tab.handle = document.createElement('div');
+        tab.handle.className =
+            'tab' + 
+                (currentOpenTab == tab ?
+                        ' active' : '');
+        tab.handle.textContent = tab.name;
+        tab.handle.style.padding = '0.5em 1em';
+        tab.handle.style.cursor = 'pointer';
+        tab.handle.style.background =
+            (currentOpenTab == tab) ?
+                '#232f3e' : 'transparent';
+        tab.handle.style.borderRight = '1px solid #404040';
+        tab.handle.onclick = () => switchTabView(tab);
+
+        // Close button on handle
+        tab.close = document.createElement('span');
+        tab.close.textContent = ' ×';
+        tab.close.style.cursor = 'pointer';
+        tab.close.style.marginLeft = '0.5em';
+        tab.close.onclick = (event) => {
+            event.stopPropagation();
+            closeTabView(tab);
         };
-        tabElem.appendChild(closeBtn);
-        tabBar.appendChild(tabElem);
+        tab.handle.appendChild(tab.close);
+        tabBar.appendChild(tab.handle);
     });
 }
 
-function openTab(path, content) {
-    let normPath = path ? normalizePath(path) : null;
-    let name = normPath ? normPath.split('/').pop() : (content && content.name ? content.name : 'untitled.php');
-    let tab = normPath ? openTabs.find(t => t.path === normPath) : openTabs.find(t => !t.path && t.name === name);
-    if (tab) {
-        switchTab(tab.path, tab.name);
-        return;
+function selectTab(path, name) {
+    var path = normalizePath(path);
+    let tab =  openTabs.find(selected => {
+        return (selected.path === path) &&
+               (selected.name === name);
+    });
+
+    if (!tab) {
+        throw new Error(
+            `Invalid Call, tab not found ` +
+                `name=${name||'unknown'}, ` +
+                `path=${path||'unknown'}`);
     }
-    // Only mark as unsaved if content is different from what is in the VFS (for files), or if explicitly unsaved for untitled
-    let unsaved = false;
-    if (normPath && Module && Module.vfs) {
-        try {
-            console.log("path" + path);
-            console.log("normalised path " + normPath);
-            const vfsContent = Module.vfs.get(normPath);
-            if (vfsContent !== false) {
-                const decoder = new TextDecoder('utf-8');
-                const vfsText = decoder.decode(vfsContent);
-                unsaved = (content !== vfsText);
-            }
-        } catch {}
-    }
-    openTabs.push({ path: normPath, name, content, unsaved });
-    switchTab(normPath, name);
+
+    return tab;
 }
 
-function switchTab(path, name) {
-    let normPath = path ? normalizePath(path) : null;
-    let tab = normPath ? openTabs.find(t => t.path === normPath) : null;
-    if (!tab && typeof name === 'string') {
-        tab = openTabs.find(t => !t.path && t.name === name);
-    }
-    if (!tab) return;
+function switchTabView(tab) {
+    if ((currentOpenTab && tab) &&
+        (currentOpenTab !== tab)) {
+        const editorValue =
+            editor.getValue();
+        currentOpenTab.content = editorValue;
 
-    // Save current editor state to current tab before switching
-    if (currentOpenFile !== null || typeof name === 'string') {
-        const currentTab = currentOpenFile ? 
-            openTabs.find(t => t.path === normalizePath(currentOpenFile)) :
-            openTabs.find(t => !t.path && t.name === name);
-        
-        if (currentTab) {
-            const editorValue = editor.getValue();
-            currentTab.content = editorValue;
-            
-            if (currentTab.path && currentTab.vfsContent !== undefined) {
-                // For files in VFS, compare with stored VFS content
-                currentTab.unsaved = (editorValue !== currentTab.vfsContent);
-            } else if (!currentTab.path) {
-                // For new/untitled files, any content means unsaved
-                currentTab.unsaved = editorValue.length > 0;
-            }
+        if (currentOpenTab.path &&
+            currentOpenTab.vfsContent !== undefined) {
+            // For files in VFS, compare with stored VFS content
+            currentOpenTab.unsaved =
+                (editorValue !== currentOpenTab.vfsContent);
+        } else if (!currentOpenTab.path) {
+            // For demo sourced content, check against original code
+            currentOpenTab.unsaved =
+                (editorValue !== demos[currentOpenTab.source]);
         }
     }
-    
-    currentOpenFile = tab.path;
-    // Always use tab's stored content when switching
-    editor.setValue(tab.content || '');
-    // Always set unsavedChanges to the tab's unsaved state after syncing editor
-    unsavedChanges = !!tab.unsaved;
+
+    currentOpenTab  = tab;
+    editor.setValue(
+        currentOpenTab.content || '');
     updateCurrentFileDisplay();
     renderTabs();
 }
 
-function closeTab(path) {
-    const idx = openTabs.findIndex(t => t.path === path);
-    if (idx === -1) return;
-    const tab = openTabs[idx];
-    if (tab.unsaved) {
-        if (!confirm(`You have unsaved changes in ${tab.name}. Close anyway?`)) return;
-    }
-    openTabs.splice(idx, 1);
-    if (currentOpenFile === path) {
+function switchTab(path, name) {
+    return switchTabView(
+        selectTab(path, name));
+}
+
+function closeTabView(tab) {
+    openTabs.splice(tab.index, 1);
+    if (currentOpenTab == tab) {
         if (openTabs.length > 0) {
-            switchTab(openTabs[Math.max(0, idx - 1)].path);
+            switchTabView(openTabs[
+                Math.max(0, tab.index - 1)]);
         } else {
-            currentOpenFile = null;
+            currentOpenTab = null;
             unsavedChanges = false;
             editor.setValue('');
             updateCurrentFileDisplay();
         }
-    } else {
-        // Make sure the editor shows current tab's content
-        const currentTab = openTabs.find(t => t.path === currentOpenFile);
-        if (currentTab && editor.getValue() !== currentTab.content) {
-            editor.setValue(currentTab.content || '');
-        }
     }
+
     renderTabs();
+}
+
+function closeTab(path, name) {
+    return closeTabView(
+        selectTab(path, name));
 }
 
 function refreshFileTree() {
@@ -314,53 +310,63 @@ function openFile(path) {
         updateStatus('PHP runtime not ready', 'error');
         return;
     }
-    let normPath = normalizePath(path);
-    const existingTab = openTabs.find(t => t.path === normPath);
-    if (existingTab) {
-        switchTab(normPath);
-        updateStatus(`Switched to: ${normPath}`, 'success');
+
+    var path = normalizePath(path);
+
+    const content = Module.vfs.get(path);
+    if (content === false) {
+        updateStatus(`Failed to open file: ${path}`, 'error');
         return;
     }
+
+    let fileTab = openTabs.find(tab => tab.path === path);
+
     try {
-        const content = Module.vfs.get(normPath);
-        if (content === false) {
-            updateStatus(`Failed to open file: ${normPath}`, 'error');
-            return;
-        }
-        const decoder = new TextDecoder('utf-8');
-        const vfsContent = decoder.decode(content);
+        const vfsContent = vfsDecoder.decode(content);
 
-        // Always create a fresh tab state from VFS content
-        const newTab = {
-            path: normPath,
-            name: normPath.split('/').pop(),
-            content: vfsContent,
-            vfsContent: vfsContent, // Keep track of last known VFS state
-            unsaved: false
-        };
+        if (!fileTab) {
+            // Create a new tab for new content
+            const newTab = {
+                path: path,
+                name: path.split('/').pop(),
+                content:    vfsContent,
+                vfsContent: vfsContent,
+                unsaved: false
+            };
 
-        // Replace existing tab or add new one
-        const existingIndex = openTabs.findIndex(t => t.path === normPath);
-        if (existingIndex !== -1) {
-            openTabs[existingIndex] = newTab;
+            openTabs.push(fileTab = newTab);
         } else {
-            openTabs.push(newTab);
+            // Update existing tab
+            if (fileTab.content !== vfsContent) {
+                // Content has changed
+                fileTab.unsaved = true;
+            }
         }
 
-        switchTab(normPath);
-        updateStatus(`Opened: ${normPath}`, 'success');
+        switchTabView(fileTab);
+        updateStatus(
+            `Opened: ${fileTab.path}`, 'success');
     } catch (error) {
         console.error('Error opening file:', error);
-        updateStatus(`Error opening file: ${normPath}`, 'error');
+        updateStatus(
+            `Error opening: ${path}`, 'error');
     }
 }
 
 async function saveCurrentFile() {
-    let filePath = currentOpenFile;
-    if (!filePath) {
-        let filename = '';
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+
+    if (!currentOpenTab) {
+        throw Error("Invalid Call, current tab unknown");
+    }
+
+    if (!currentOpenTab.path) {
+        let response = '';
         try {
-            filename = await modal.show(
+            response = await modal.show(
                 'Save File',
                 'Enter a filename to save your code',
                 '',
@@ -372,62 +378,57 @@ async function saveCurrentFile() {
             updateStatus('Save cancelled', 'error');
             return;
         }
-        filename = (filename || '').trim();
-        if (!filename) {
+        response = (response || '').trim();
+        if (!response) {
             updateStatus('Please enter a filename', 'error');
             return;
         }
-        filePath = filename;
+
+        currentOpenTab.path = normalizePath(response);
+        currentOpenTab.name =
+            currentOpenTab.path.split('/').pop()
+        currentOpenTab.source = null;
     }
-    if (!isReady || !Module || !Module.vfs) {
-        updateStatus('PHP runtime not ready', 'error');
-        return;
-    }
-    filePath = normalizePath(filePath);
+
     try {
-        const content = editor.getValue();
-        const success = Module.vfs.put(filePath, content);
-        if (success) {
-            unsavedChanges = false;
-            let tab = openTabs.find(t => t.path === filePath);
-            if (!tab) {
-                // If this was an untitled tab, update it to have a path
-                const untitledTab = openTabs.find(t => !t.path && t.name && t.content === content);
-                if (untitledTab) {
-                    untitledTab.path = filePath;
-                    untitledTab.name = filePath.split('/').pop();
-                    tab = untitledTab;
-                }
-            }
-            if (tab) {
-                tab.content = content;
-                tab.unsaved = false;
-            }
-            currentOpenFile = filePath;
-            updateCurrentFileDisplay();
-            updateStatus(`Saved: ${filePath}`, 'success');
-            refreshFileTree();
-            renderTabs();
+        if (Module.vfs.put(currentOpenTab.path,
+                           currentOpenTab.vfsContent = editor.getValue())) {
+            updateStatus(
+                `Saved: ${currentOpenTab.path}`, 'success');
+            currentOpenTab.unsaved = false;
         } else {
-            updateStatus(`Failed to save: ${filePath}`, 'error');
+            console.error(`Failed to save: ${currentOpenTab.path}`);
+            updateStatus(`Failed to save: ${currentOpenTab.path}`, 'error');
         }
     } catch (error) {
-        console.error('Error saving file:', error);
-        updateStatus(`Error saving file: ${filePath}`, 'error');
+        console.error(`Error saving file: ${currentOpenTab.path}`, error);
+        updateStatus(`Error saving file: ${currentOpenTab.path}`, 'error');
+    } finally {
+        updateCurrentFileDisplay();
+        refreshFileTree();
+        renderTabs();
     }
 }
 
 function updateCurrentFileDisplay() {
-    if (currentOpenFile) {
-        const filename = currentOpenFile.split('/').pop();
-        // Use the current tab's unsaved state for the indicator
-        const tab = openTabs.find(t => t.path === currentOpenFile);
-        const showDot = tab ? tab.unsaved : false;
-        currentFileElement.textContent = filename + (showDot ? ' •' : '');
+    if (currentOpenTab) {
+        if (currentOpenTab.path) {
+            const currentOpenFileName =
+                currentOpenTab.path.split('/').pop();
+            currentFileElement.textContent =
+                currentOpenFileName +
+                    (currentOpenTab.unsaved ?
+                        ' •' : '');
+            return;
+        }
+
+        currentFileElement.textContent =
+            currentOpenTab.name +
+                (currentOpenTab.unsaved ?
+                    ' •' : '');
     } else {
-        currentFileElement.textContent = 'PHP Code Editor';
+        currentFileElement.textContent = 'PHP Editor';
     }
-    renderTabs();
 }
 
 function showContextMenu(e, path) {
@@ -583,51 +584,57 @@ function performRename(newName) {
     try {
         const success = Module.vfs.move(currentContextPath, newPath);
         if (success) {
-            if (currentOpenFile === currentContextPath) {
-                currentOpenFile = newPath;
+            updateStatus(`Renamed to: ${newName}`, 'success');
+            if (currentOpenTab.path === currentContextPath) {
+                currentOpenTab.path = newPath;
                 updateCurrentFileDisplay();
             }
             refreshFileTree();
-            updateStatus(`Renamed to: ${newName}`, 'success');
+            renderTabs();
         } else {
             updateStatus(`Failed to rename: ${currentContextPath}`, 'error');
         }
     } catch (error) {
-        updateStatus(`Error renaming: ${currentContextPath}`, 'error');
+        log.error(
+            `Error renaming: ${currentContextPath} -> ${newPath}`, error)
+        updateStatus(`Error renaming: {currentContextPath} -> ${newPath}`, 'error');
     }
 }
 
 function renameFile() {
-    if (!currentContextPath) return;
+    if (!currentContextPath) {
+        return;
+    }
     const currentName = currentContextPath.split('/').pop();
     (async () => {
-        let newName = '';
+        let response = null;
         try {
-            newName = await modal.show(
+            response = await modal.show(
                 'Rename',
                 '',
-                '',
+                currentName,
                 { text: 'Rename' },
                 { text: 'Cancel' }
             );
         } catch {
             return;
         }
-        newName = (newName || '').trim();
-        if (!newName) {
+        response = (response || '').trim();
+        if (!response) {
             updateStatus('Please enter a new name', 'error');
             return;
         }
-        performRename(newName);
+        performRename(response);
     })();
 }
 
 function downloadFile() {
-    if (!currentContextPath) return;
     if (!isReady || !Module || !Module.vfs) {
         updateStatus('PHP runtime not ready', 'error');
         return;
     }
+
+    if (!currentContextPath) return;
     try {
         const content = Module.vfs.get(currentContextPath);
         if (content === false) {
@@ -652,22 +659,22 @@ function downloadFile() {
 }
 
 function deleteFile() {
-    if (!currentContextPath) return;
-    if (!confirm(`Are you sure you want to delete ${currentContextPath}?`)) {
-        return;
-    }
     if (!isReady || !Module || !Module.vfs) {
         updateStatus('PHP runtime not ready', 'error');
         return;
     }
+
+    if (!currentContextPath) return;
+    if (!confirm(`Are you sure you want to delete ${currentContextPath}?`)) {
+        return;
+    }
     try {
-        const success = Module.vfs.unlink(currentContextPath, true);
-        if (success) {
-            if (currentOpenFile === currentContextPath) {
-                currentOpenFile = null;
-                unsavedChanges = false;
+        if (Module.vfs.unlink(currentContextPath, true)) {
+            const deletedTab = openTabs.find(
+                tab => tab.path === currentContextPath);
+            if (deletedTab) {
+                closeTabView(deletedTab);
                 updateCurrentFileDisplay();
-                editor.setValue('');
             }
             refreshFileTree();
             updateStatus(`Deleted: ${currentContextPath}`, 'success');
@@ -773,20 +780,45 @@ function switchPHPVersion() {
     }
 }
 
+function loadDemoName(selected) {
+    let counter = 0;
+    while (openTabs.some(
+        tab => (tab.source == selected))) {
+        counter++;
+    }
+
+    let name = 
+        `untitled-${selected}.php`;
+
+    if (!counter) {
+        return name;
+    }
+
+    return name.replace(
+        '.php', `-${counter}.php`);
+}
+
 function loadDemo() {
     const selectedDemo = demoSelect.value;
     if (selectedDemo && demos[selectedDemo]) {
-        let baseName = `untitled-${selectedDemo}.php`;
-        let name = baseName;
-        let counter = 1;
-        while (openTabs.some(t => !t.path && t.name === name)) {
-            name = baseName.replace('.php', `-${counter}.php`);
-            counter++;
+        const newTab = {
+            path: null,
+            source: selectedDemo,
+            name: loadDemoName(selectedDemo),
+            content: demos[selectedDemo],
+            unsaved: false };
+        openTabs.push(newTab);
+        try {
+            switchTabView(newTab);
+            updateStatus(
+                `Demo loaded: ${newTab.name}`, 'success');
+        } catch (error) {
+            console.error(`Demo failed to load: ${newTab.name}`, error);
+            updateStatus(
+                `Demo failed to load: ${newTab.name}`, 'error');
+        } finally {
+            demoSelect.value = '';
         }
-        openTabs.push({ path: null, name, content: demos[selectedDemo], unsaved: true });
-        switchTab(null, name);
-        demoSelect.value = '';
-        updateStatus(`Demo loaded: ${name}`, 'success');
     }
 }
 
@@ -798,7 +830,8 @@ function clearOutput() {
 function updateStatus(message, type) {
     if (!statusBar) return;
     statusBar.textContent = message;
-    statusBar.classList.remove('loading', 'error', 'success');
+    statusBar.classList.remove(
+        'loading', 'error', 'success');
     if (type) {
         statusBar.classList.add(type);
     }
@@ -813,15 +846,15 @@ function runFile(path) {
     try {
         updateStatus(`Running: ${path}`, 'loading');
         outputStatus.textContent = 'Running...';
-        const result = Module.include(path);
-        output.textContent = result;
-        updateStatus(`Ran: ${path}`, 'success');
+        output.textContent = Module.include(path);
+        updateStatus(`Complete: ${path}`, 'success');
         outputStatus.textContent = 'Complete';
     } catch (error) {
         output.textContent = `Error: ${error.message}`;
+        console.error(
+            `Execution failed: ${path}`, error);
         updateStatus(`Execution failed: ${path}`, 'error');
         outputStatus.textContent = 'Error';
-        console.error('Execution error:', error);
     }
 }
 
@@ -840,18 +873,24 @@ function initializeEditor() {
             'Cmd-S': saveCurrentFile
         }
     });
+
     editor.on('change', () => {
-        if (currentOpenFile) {
-            const tab = openTabs.find(t => t.path === currentOpenFile);
-            if (tab && tab.vfsContent !== undefined) {
-                // Only mark as unsaved if content actually differs from VFS content
-                const currentContent = editor.getValue();
-                tab.unsaved = (currentContent !== tab.vfsContent);
-                unsavedChanges = tab.unsaved;
-                updateCurrentFileDisplay();
+        if (currentOpenTab) {
+            const currentContent = editor.getValue();
+            if (currentOpenTab.path) {
+                // Compare against vfs content for files
+                currentOpenTab.unsaved = 
+                    (currentContent !== currentOpenTab.vfsContent);
+            } else {
+                // Compare agaisnt demo for demos
+                currentOpenTab.unsaved =
+                    (currentContent !== demos[currentOpenTab.source]);
             }
+
+            updateCurrentFileDisplay();
         }
     });
+
     const savedCode = sessionStorage.getItem('em-demo-code');
     if (savedCode) {
         editor.setValue(savedCode);
@@ -1082,10 +1121,18 @@ async function loadGithubGist(gistInput) {
 // Helper: GitHub API request (uses token if set)
 async function githubApiRequest(path) {
     const url = 'https://api.github.com' + path;
-    const headers = { 'Accept': 'application/vnd.github.v3+json' };
-    if (githubToken) headers['Authorization'] = 'token ' + githubToken;
+    const headers = { 
+        'Accept': 'application/vnd.github.v3+json' 
+    };
+
+    if (githubToken)
+        headers['Authorization'] = 'token ' + githubToken;
+    
     const resp = await fetch(url, { headers });
-    if (!resp.ok) throw new Error(`GitHub API error: ${resp.status}`);
+    
+    if (!resp.ok) 
+        throw new Error(`GitHub API error: ${resp.status}`);
+    
     return await resp.json();
 }
 
@@ -1109,7 +1156,6 @@ function runCode() {
                 if (success) {
                     tab.content = content;
                     tab.unsaved = false;
-                    unsavedChanges = false;
                     updateCurrentFileDisplay();
                     updateStatus(`Saved: ${currentOpenFile}`, 'success');
                     refreshFileTree();
@@ -1171,7 +1217,8 @@ function loadPHPRuntime() {
             if (typeof Module !== 'undefined' && Module && Module.ready) {
                 isReady = true;
                 updateStatus(`PHP ${currentPHPVersion} ready - Press Ctrl+Enter to run code`, 'success');
-                if (typeof editorStatus !== 'undefined' && editorStatus) editorStatus.textContent = `PHP ${currentPHPVersion}`;
+                if (typeof editorStatus !== 'undefined' && editorStatus)
+                    editorStatus.textContent = `PHP ${currentPHPVersion}`;
                 runButton.disabled = false;
                 output.textContent = 'Ready! Click "Run Code" or press Ctrl+Enter to execute PHP code.';
                 if (typeof newFileButton !== 'undefined' && newFileButton) newFileButton.disabled = false;
