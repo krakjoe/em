@@ -49,11 +49,13 @@ $(EM_ZIP_CONFIGURED): $(EM_ZIP_TAR)
 				-DENABLE_OPENSSL=OFF \
 				-DZLIB_LIBRARY=$(EM_ZLIB_LIB) \
 				-DZLIB_INCLUDE_DIR=$(EM_ZLIB_SRC)/include
+	@touch $@
 
 $(EM_ZIP_MADE): $(EM_ZIP_CONFIGURED)
 	cd $(EM_ZIP_SRC)/build && \
 	CFLAGS="$(EM_ZIP_CFLAGS)" LDFLAGS="$(EM_ZIP_LDFLAGS)" \
 		$(EMMAKE) make -j$(EM_PHP_PROC)
+	@touch $@
 
 $(EM_ZIP_LIB): $(EM_ZIP_MADE)
 	cd $(EM_ZIP_SRC)/build && \
@@ -78,7 +80,7 @@ clean-zip:
 # Setup recipe
 ########################################################################
 $(eval $(call EM_RECIPE_ADD_CONFIGURE, $(EM_ZIP_CONFIGURE)))
-$(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_ZIP_LIB)))
+$(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_ZIP_MADE)))
 $(eval $(call EM_RECIPE_ADD_LIB,       $(EM_ZIP_LIB)))
 $(eval $(call EM_RECIPE_ADD_CLEANER,   clean-zip))
 $(eval $(call EM_RECIPE_ADD_CFLAGS,    -DHAVE_EM_ZIP_VFS))

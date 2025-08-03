@@ -50,6 +50,8 @@ class Modal {
                     this.hide();
                 });
             this.element.style.display = "block";
+            // Give the browser a moment to display the modal before focusing
+            setTimeout(() => this.input.focus(), 0);
         });
     }
 
@@ -114,6 +116,14 @@ Modal.Input = class {
 
     result() {
         return this.element.value;
+    }
+
+    focus() {
+        this.element.focus();
+    }
+
+    blur() {
+        this.element.blur();
     }
 
     keydown(event) {

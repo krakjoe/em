@@ -454,8 +454,14 @@ function showContextMenu(e, path) {
         } catch (err) {}
     }
     const runMenuItem = contextMenu.querySelector('[data-action="run"]');
+    const downloadMenuItem = contextMenu.querySelector('[data-action="download"]');
     if (runMenuItem) {
-        runMenuItem.style.display = isFile ? '' : 'none';
+        runMenuItem.style.display =
+            isFile ? '' : 'none';
+    }
+    if (downloadMenuItem) {
+        downloadMenuItem.style.display =
+            isFile ? '' : 'none';
     }
     contextMenu.style.display = 'block';
     contextMenu.style.left = e.pageX + 'px';
@@ -616,6 +622,35 @@ function renameFile() {
     })();
 }
 
+function downloadFile() {
+    if (!currentContextPath) return;
+    if (!isReady || !Module || !Module.vfs) {
+        updateStatus('PHP runtime not ready', 'error');
+        return;
+    }
+    try {
+        const content = Module.vfs.get(currentContextPath);
+        if (content === false) {
+            updateStatus(`Failed to read file: ${currentContextPath}`, 'error');
+            return;
+        }
+        const blob = new Blob([content], { type: 'application/octet-stream' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = currentContextPath.split('/').pop();
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        updateStatus(`Downloaded: ${currentContextPath}`, 'success');
+    } catch (error) {
+        console.error('Error downloading file:', error);
+        updateStatus(`Error downloading: ${currentContextPath}`, 'error');
+    }
+}
+
 function deleteFile() {
     if (!currentContextPath) return;
     if (!confirm(`Are you sure you want to delete ${currentContextPath}?`)) {
@@ -675,6 +710,9 @@ function initializeEventHandlers() {
                 break;
             case 'open':
                 openFile(currentContextPath);
+                break;
+            case 'download':
+                downloadFile();
                 break;
             case 'rename':
                 renameFile();

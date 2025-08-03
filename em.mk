@@ -297,3 +297,24 @@ ifneq ($(EM_EMSDK_LDFLAGS),)
 	@echo "EM_EMSDK_LDFLAGS:"
 	@echo "\t$(EM_EMSDK_LDFLAGS)"
 endif
+########################################################################
+# Disable all implicit rules - we handle everything explicitly
+########################################################################
+MAKEFLAGS += --no-builtin-rules
+.SUFFIXES:
+# Clear ALL pattern rules and disable all implicit rules
+%:: %,v
+%:: RCS/%,v
+%:: s.%
+%:: SCCS/s.%
+%.c:: %.w %.ch
+%.c:: %.y
+%.c:: %.l
+%.c:: %.w
+%.c:: %.ch
+%.o:: %.c
+%.o:: %.cc
+%.o:: %.cpp
+%.o:: %.p
+%.o:: %.f
+%.lo:: %.c
