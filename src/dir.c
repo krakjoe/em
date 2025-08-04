@@ -138,8 +138,6 @@ php_stream* em_vfs_wrapper_opendir(
     if (!vpath) {
         return NULL;
     }
-    
-    fprintf(stderr, "opendir(%s)\n", filename);
 
     em_vfs_node_t* directory = NULL;
     
