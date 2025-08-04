@@ -244,9 +244,11 @@ EM_JS(ssize_t, em_http_request, (
         if (http.headers.length) {
             for (let h = 0; h < http.headers.length; h++) {
                 let key = UTF8ToString(
-                    Module.getValue(http.headers.keys + h * 4, 'i32'));
+                    Module.HEAP32[
+                        (http.headers.keys   >> 2) + h]);
                 let value = UTF8ToString(
-                    Module.getValue(http.headers.values + h * 4, 'i32'));
+                    Module.HEAP32[
+                        (http.headers.values >> 2) + h]);
 
                 if (key.toLowerCase() == "user-agent") {
                     console.warn(
