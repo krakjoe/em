@@ -141,7 +141,7 @@ $(EM_PHP_DIR)/config.status: $(EM_PHP_DIR)/config.deps $(EM_RECIPE_TARGETS)
 
 $(EM_SRC_DIR)/stub.lo: $(EM_SRC_DIR)/stub.c $(EM_PHP_DIR)/config.status
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_EMSDK_CFLAGS) \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/stub.c -o $(EM_SRC_DIR)/stub.lo
 
 $(EM_RECIPE_BUILD_OBJECTS): %.lo: %.c $(EM_PHP_DIR)/config.status
@@ -212,6 +212,7 @@ bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_RULES) $(EM_RECIPE_LINK_OBJECTS) $(EM
 		-s EXPORTED_RUNTIME_METHODS='$(EM_EXPORT_METHODS)' \
 		-s ALLOW_MEMORY_GROWTH=1 \
 		-s INITIAL_MEMORY=128MB \
+		-s EXIT_RUNTIME=1 \
 		-s WASM=1 $(EM_EMSDK_LDFLAGS) $(EM_RECIPE_LDFLAGS) $(EM_RECIPE_LIBS) \
 		$(EM_PHP_DIR)/.libs/libphp.a \
 		$(EM_SRC_DIR)/stub.o \

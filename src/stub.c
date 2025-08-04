@@ -41,12 +41,17 @@ int posix_spawnp(pid_t *pid, const char *file,
     return -1; // not supported
 }
 
+/**
+ * the asan runtime links it's own reallocarray
+ */
+#if !defined(EM_SANITIZERS)
 void *reallocarray(void *ptr, size_t nmemb, size_t size) {
     if (nmemb && size && SIZE_MAX / nmemb < size) {
         return NULL;
     }
     return realloc(ptr, nmemb * size);
 }
+#endif
 
 int getcontext(ucontext_t *ucp) {
     (void) ucp;

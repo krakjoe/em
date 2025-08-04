@@ -310,6 +310,9 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 
     em_sapi_module.ini_entries = (char*) EM_INI;
 
+    /* do not attempt to scan search paths for ini */
+    em_sapi_module.php_ini_ignore = 1;
+
   	if (em_sapi_module.startup(&em_sapi_module) == FAILURE) {
   		return FAILURE;
   	}

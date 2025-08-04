@@ -414,7 +414,12 @@ static php_stream *em_vfs_wrapper_open(php_stream_wrapper *wrapper,
     if (!abstract) {
         return NULL;
     }
-    *opened_path = zend_string_init(path, strlen(path), 0);
+
+    if (opened_path) {
+        *opened_path =
+            zend_string_init(path, strlen(path), 0);
+    }
+
     return php_stream_alloc(&em_vfs_ops, abstract, 0, mode);
 }
 

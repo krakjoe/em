@@ -64,7 +64,7 @@ $(EM_ZIP_LIB): $(EM_ZIP_MADE)
 	@touch $@
 
 $(EM_RECIPE_STUBS)/zip_source_file_stdio_named.c.o: $(EM_RECIPE_STUBS)/zip_source_file_stdio_named.c $(EM_ZIP_LIB)
-	$(CC) $(EM_PHP_CFLAGS) -I$(EM_ZIP_SRC)/include $(EM_EMSDK_CFLAGS) \
+	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) -I$(EM_ZIP_SRC)/include \
 			-c $(EM_RECIPE_STUBS)/zip_source_file_stdio_named.c \
 				-o $(EM_RECIPE_STUBS)/zip_source_file_stdio_named.c.o
 

@@ -65,10 +65,20 @@ static void em_http_request_headers_array(em_http_request_t* request, zval* head
     request->headers.values = pecalloc(sizeof(char*), count, 1);
     
     size_t header_count = 0;
-    ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(headers), value) {
-        if (value && Z_TYPE_P(value) == IS_STRING) {
-            em_http_request_headers_parse_line(request, Z_STRVAL_P(value), &header_count);
+    zend_string* key;
+    ZEND_HASH_FOREACH_STR_KEY_VAL(Z_ARRVAL_P(headers), key, value) {
+        if (!key ||
+            !value ||
+            Z_TYPE_P(value) != IS_STRING) {
+            /* the only supported form for header arrays is key => value */
+            continue;
         }
+
+        request->headers.keys[header_count] =
+            pestrndup(ZSTR_VAL(key), ZSTR_LEN(key), 1);
+        request->headers.values[header_count] =
+            pestrndup(Z_STRVAL_P(value), Z_STRLEN_P(value), 1);
+        header_count++;
     } ZEND_HASH_FOREACH_END();
     
     request->headers.length = header_count;
@@ -121,10 +131,21 @@ em_http_request_t em_http_request_create(const char* url, php_stream_context* co
         .timeout = 60 * 1000,
     };
 
+    if (!context || Z_TYPE(context->options) != IS_ARRAY) {
+        /**
+         * Where no context is available the default must be GET
+         */
+        request.method =
+            pestrdup("GET", 1);
+        return request;
+    }
+
     option = php_stream_context_get_option(context, "http", "method");
 
     if (option && Z_TYPE_P(option) == IS_STRING) {
         request.method = pestrdup(Z_STRVAL_P(option), 1);
+    } else {
+        request.method = pestrdup("GET", 1);
     }
 
     option = php_stream_context_get_option(context, "http", "header");
@@ -147,8 +168,7 @@ em_http_request_t em_http_request_create(const char* url, php_stream_context* co
     option = php_stream_context_get_option(context, "http", "timeout");
 
     if (option &&
-        Z_TYPE_P(option) == IS_LONG ||
-        Z_TYPE_P(option) == IS_DOUBLE) {
+        (Z_TYPE_P(option) == IS_LONG || Z_TYPE_P(option) == IS_DOUBLE)) {
         convert_to_double(option);
         request.timeout =
             Z_DVAL_P(option) * 1000;

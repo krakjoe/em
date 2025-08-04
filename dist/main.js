@@ -107,6 +107,7 @@ function renderTabs() {
             tab.handle.appendChild(tab.close);
             tabBar.appendChild(tab.handle);
         });
+        updateCurrentFileDisplay();
     })
 }
 
@@ -148,7 +149,6 @@ function switchTabView(tab) {
 
     currentOpenTab = tab;
     editor.setValue(currentOpenTab.content || '');
-    updateCurrentFileDisplay();
     renderTabs();
 }
 
@@ -168,7 +168,10 @@ function closeTabView(tab) {
             editor.setValue('');
             renderTabs();
         }
+    } else {
+        renderTabs();
     }
+    updateCurrentFileDisplay();
 }
 
 function closeTab(path, name) {
@@ -585,7 +588,6 @@ function performRename(newName) {
             updateStatus(`Renamed to: ${newName}`, 'success');
             if (currentOpenTab.path === currentContextPath) {
                 currentOpenTab.path = newPath;
-                updateCurrentFileDisplay();
             }
             refreshFileTree();
             renderTabs();
@@ -672,7 +674,6 @@ function deleteFile() {
                 tab => tab.path === currentContextPath);
             if (deletedTab) {
                 closeTabView(deletedTab);
-                updateCurrentFileDisplay();
             }
             refreshFileTree();
             updateStatus(`Deleted: ${currentContextPath}`, 'success');
@@ -1146,7 +1147,6 @@ function runCode() {
                 if (success) {
                     tab.content = content;
                     tab.unsaved = false;
-                    updateCurrentFileDisplay();
                     updateStatus(`Saved: ${currentOpenFile}`, 'success');
                     refreshFileTree();
                     renderTabs();
