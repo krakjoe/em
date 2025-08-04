@@ -31,11 +31,12 @@ EM_LIBXML_MADE        = $(EM_LIBXML_SRC)/libxml2.a
 ########################################################################
 all-libxml: install-libxml
 
-$(EM_LIBXML_TAR): $(EM_ZLIB_LIB)
+$(EM_LIBXML_TAR): $$(EM_ZLIB_LIB)
 	wget $(EM_LIBXML_URL) -O $(EM_LIBXML_TAR)
 	mkdir -p $(EM_LIBXML_SRC)
 	tar -C $(EM_LIBXML_SRC) --strip-components=1 -xvf \
 		$(EM_LIBXML_TAR)
+	@touch $@
 
 $(EM_LIBXML_CONFIGURED): $(EM_LIBXML_TAR)
 	cd $(EM_LIBXML_SRC) && \

@@ -74,20 +74,39 @@ include $(EM_MK_DIR)/version.mk
 ########################################################################
 include $(EM_MK_DIR)/recipe.mk
 ########################################################################
+# Load baking macros
+########################################################################
+include $(EM_MK_DIR)/bake.mk
+########################################################################
 # Find libtool
 ########################################################################
 LIBTOOL     ?= $(realpath $(EM_PHP_DIR)/libtool)
 ########################################################################
+# Load bakers
+########################################################################
+ifneq ($(filter bake-%, $(MAKECMDGOALS)),)
+EM_BAKERS      := $(sort \
+	$(patsubst bake-%,%,$(filter bake-%, $(MAKECMDGOALS))))
+EM_BAKER_PATHS := $(foreach EM_BAKER,\
+	$(EM_BAKERS),$(EM_BAKE_IN)/$(EM_BAKER).mk)
+$(foreach EM_BAKER_SEARCH,$(EM_BAKER_PATHS), \
+  $(if $(wildcard $(EM_BAKER_SEARCH)), \
+	,$(error Baking: $(EM_BAKER_SEARCH) not found in $(EM_BAKE_IN)) \
+  ) \
+)
+include $(EM_BAKER_PATHS)
+endif
+########################################################################
 # Load recipes
 ########################################################################
-ifneq ($(filter with-%, $(MAKECMDGOALS)),)
+ifneq ($(or $(filter with-%, $(MAKECMDGOALS)),$(EM_BAKE_RECIPES)),)
 EM_RECIPES      := $(sort \
-	$(patsubst with-%,%,$(filter with-%, $(MAKECMDGOALS))))
-EM_RECIPE_PATHS := $(foreach r,\
-	$(EM_RECIPES),$(EM_RECIPE_IN)/$(r).mk)
-$(foreach p,$(EM_RECIPE_PATHS), \
-  $(if $(wildcard $(p)), \
-	,$(error Recipe: $(p) not found in recipe/) \
+	$(patsubst with-%,%,$(filter with-%, $(MAKECMDGOALS))) $(EM_BAKE_RECIPES))
+EM_RECIPE_PATHS := $(foreach EM_RECIPE,\
+	$(EM_RECIPES),$(EM_RECIPE_IN)/$(EM_RECIPE).mk)
+$(foreach EM_RECIPE_SEARCH,$(EM_RECIPE_PATHS), \
+  $(if $(wildcard $(EM_RECIPE_SEARCH)), \
+	,$(error Recipe: $(EM_RECIPE_SEARCH) not found in $(EM_RECIPE_IN)) \
   ) \
 )
 include $(EM_RECIPE_PATHS)
@@ -96,12 +115,20 @@ endif
 .PHONY: all debug 
 .PHONY: clean clean-objects clean-bin clean-recipes clean-php clean-deps
 .PHONY: strip install 
-.PHONY: with-%
+.PHONY: bake-% without-% with-%
 ########################################################################
 ifneq ($(filter debug% clean%, $(MAKECMDGOALS)),)
+bake-%:
+	@true
+without-%:
+	@true
 with-%:
 	@true
 else
+bake-%: all
+	@true
+without-%: all
+	@true
 with-%: all
 	@true
 endif
@@ -265,7 +292,20 @@ ifneq ($(EM_PHP_CONFIGURE),)
 	@echo "EM_PHP_CONFIGURE:"
 	@echo "\t$(EM_PHP_CONFIGURE)"
 endif
+	@echo "EM_BAKE_IN: $(EM_BAKE_IN)"
+ifneq ($(EM_BAKERS),)
+	@echo "EM_BAKERS"
+	@echo "\t$(EM_BAKERS)"
+endif
+ifneq ($(EM_BAKE_RECIPES),)
+	@echo "EM_BAKE_RECIPES"
+	@echo "\t$(EM_BAKE_RECIPES)"
+endif
 	@echo "EM_RECIPE_IN: $(EM_RECIPE_IN)"
+ifneq ($(EM_RECIPES),)
+	@echo "EM_RECIPES"
+	@echo "\t$(EM_RECIPES)"
+endif
 ifneq ($(EM_RECIPE_CONFIGURE),)
 	@echo "EM_RECIPE_CONFIGURE:"
 	@echo "\t$(EM_RECIPE_CONFIGURE)"
@@ -289,6 +329,14 @@ ifneq ($(EM_RECIPE_LINK_OBJECTS),)
 	@echo "\t$(EM_RECIPE_LINK_SOURCE)"
 	@echo "EM_RECIPE_LINK_OBJECTS:"
 	@echo "\t$(EM_RECIPE_LINK_OBJECTS)"
+endif
+ifneq ($(EM_RECIPE_CFLAGS),)
+	@echo "EM_RECIPE_CFLAGS:"
+	@echo "\t$(EM_RECIPE_CFLAGS)"
+endif
+ifneq ($(EM_RECIPE_LDFLAGS),)
+	@echo "EM_RECIPE_LDFLAGS:"
+	@echo "\t$(EM_RECIPE_LDFLAGS)"
 endif
 ifneq ($(EM_EMSDK_CFLAGS),)
 	@echo "EM_EMSDK_CFLAGS:"

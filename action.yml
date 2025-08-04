@@ -20,6 +20,14 @@ inputs:
     description: 'Extra LDFLAGS used when linking with emcc'
     required: false
     default: ''
+  bake:
+    description: 'Space-separated list of bakers'
+    required: false
+    default: ''
+  without:
+    description: 'Space-separated list of exclusions (only applies to bakers)'
+    required: false
+    default: ''
   with:
     description: 'Space-separated list of recipes to build (e.g. "ctype opcache pdo sqlite3")'
     required: false
@@ -66,7 +74,25 @@ runs:
       id: build
       shell: bash
       run: |
-        # Starting action ...
+        # Baking ...
+        ACTION_BAKE="${{ inputs.bake }}"
+        EM_BAKERS=""
+        if [ -n "$ACTION_BAKE" ]; then
+          for BAKER in $ACTION_BAKE; do
+            EM_BAKERS="$EM_BAKERS bake-$BAKER"
+          done
+        fi
+
+        # Excluding ...
+        ACTION_WITHOUT="${{ inputs.without }}"
+        EM_EXCLUSIONS=""
+        if [ -n "$ACTION_WITHOUT" ]; then
+          for EXCLUSION in $ACTION_WITHOUT; do
+            EM_EXCLUSIONS="$EM_EXCLUSIONS without-$EXCLUSION"
+          done
+        fi
+
+        # Including ...
         ACTION_WITH="${{ inputs.with }}"
         EM_RECIPES=""
         if [ -n "$ACTION_WITH" ]; then
@@ -81,7 +107,7 @@ runs:
         EM_EMSDK_CFLAGS=${{ inputs.EM_EMSDK_CFLAGS }} \
         EM_EMSDK_LDFLAGS=${{ inputs.EM_EMSDK_LDFLAGS }} \
           make -f ${{ github.action_path }}/em.mk \
-            $EM_RECIPES
+            $EM_BAKERS $EM_EXCLUSIONS $EM_RECIPES
 
         # Copy outputs to current directory so caller can access them
         [ -f ./php-em.js ]   || { cp -f ${{ github.action_path }}/php-em.js ./;   }

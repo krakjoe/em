@@ -57,8 +57,11 @@ EM_EXPORT_FUNCTIONS = [          \
 	"_em_vfs_iterator_free"      \
 ]
 define EM_EXPORT_ADD_FUNCTION
-ifeq ($(filter $(1),$(EM_EXPORT_FUNCTIONS)),)
-EM_EXPORT_FUNCTIONS  += $(1)
+$(eval EM_EXPORT := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_EXPORT),\
+		$(EM_EXPORT_FUNCTIONS)),)
+EM_EXPORT_FUNCTIONS  += $(EM_EXPORT)
 endif
 endef
 ########################################################################
@@ -74,8 +77,11 @@ EM_EXPORT_METHODS = [      \
 	"HEAP32"               \
 ]
 define EM_EXPORT_ADD_METHOD
-ifeq ($(filter $(1),$(EM_EXPORT_METHODS)),)
-EM_EXPORT_METHODS  += $(1)
+$(eval EM_EXPORT := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_EXPORT),\
+		$(EM_EXPORT_METHODS)),)
+EM_EXPORT_METHODS  += $(EM_EXPORT)
 endif
 endef
 ########################################################################

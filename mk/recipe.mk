@@ -76,6 +76,7 @@
 # Public, may be set by caller
 ########################################################################
 EM_RECIPE_IN       ?= $(EM_ROOT_DIR)/recipe
+EM_RECIPE_BAKE     ?= $(EM_ROOT_DIR)/bake
 EM_RECIPE_STUBS    ?= $(EM_RECIPE_IN)/stubs
 EM_RECIPE_OUT      ?= /tmp
 ########################################################################
@@ -83,8 +84,11 @@ EM_RECIPE_OUT      ?= /tmp
 ########################################################################
 EM_RECIPE_CONFIGURE  ?=
 define EM_RECIPE_ADD_CONFIGURE
-ifeq ($(filter $(1),$(EM_RECIPE_CONFIGURE)),)
-EM_RECIPE_CONFIGURE  += $(1)
+$(eval EM_RECIPE_OPTION := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_OPTION),\
+		$(EM_RECIPE_CONFIGURE)),)
+EM_RECIPE_CONFIGURE  += $(EM_RECIPE_OPTION)
 endif
 endef
 ########################################################################
@@ -92,8 +96,11 @@ endef
 ########################################################################
 EM_RECIPE_TARGETS  ?=
 define EM_RECIPE_ADD_TARGET
-ifeq ($(filter $(1),$(EM_RECIPE_TARGETS)),)
-EM_RECIPE_TARGETS  += $(1)
+$(eval EM_RECIPE_TARGET := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_TARGET),\
+		$(EM_RECIPE_TARGETS)),)
+EM_RECIPE_TARGETS  += $(EM_RECIPE_TARGET)
 endif
 endef
 ########################################################################
@@ -101,8 +108,11 @@ endef
 ########################################################################
 EM_RECIPE_CLEANERS ?=
 define EM_RECIPE_ADD_CLEANER
-ifeq ($(filter $(1),$(EM_RECIPE_CLEANERS)),)
-EM_RECIPE_CLEANERS  += $(1)
+$(eval EM_RECIPE_CLEANER := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_CLEANER),\
+		$(EM_RECIPE_CLEANERS)),)
+EM_RECIPE_CLEANERS  += $(EM_RECIPE_CLEANER)
 endif
 endef
 ########################################################################
@@ -111,9 +121,12 @@ endef
 EM_RECIPE_BUILD_SOURCE  ?=
 EM_RECIPE_BUILD_OBJECTS ?=
 define EM_RECIPE_ADD_BUILD
-ifeq ($(filter $(1),$(EM_RECIPE_BUILD_SOURCE)),)
-EM_RECIPE_BUILD_SOURCE  += $(1)
-EM_RECIPE_BUILD_OBJECTS += $(1:.c=.lo)
+$(eval EM_RECIPE_SOURCE := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_SOURCE),\
+		$(EM_RECIPE_BUILD_SOURCE)),)
+EM_RECIPE_BUILD_SOURCE  += $(EM_RECIPE_SOURCE)
+EM_RECIPE_BUILD_OBJECTS += $(EM_RECIPE_SOURCE:.c=.lo)
 endif
 endef
 ########################################################################
@@ -122,9 +135,12 @@ endef
 EM_RECIPE_LINK_SOURCE   ?=
 EM_RECIPE_LINK_OBJECTS  ?=
 define EM_RECIPE_ADD_LINK
-ifeq ($(filter $(1),$(EM_RECIPE_LINK_SOURCE)),)
-EM_RECIPE_LINK_SOURCE  += $(1)
-EM_RECIPE_LINK_OBJECTS += $(1:.c=.lo)
+$(eval EM_RECIPE_SOURCE := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_SOURCE),\
+		$(EM_RECIPE_LINK_SOURCE)),)
+EM_RECIPE_LINK_SOURCE  += $(EM_RECIPE_SOURCE)
+EM_RECIPE_LINK_OBJECTS += $(EM_RECIPE_SOURCE:.c=.lo)
 endif
 endef
 ########################################################################
@@ -132,8 +148,11 @@ endef
 ########################################################################
 EM_RECIPE_BUILD_RULES   ?=
 define EM_RECIPE_ADD_BUILD_RULE
-ifeq ($(filter $(1),$(EM_RECIPE_BUILD_RULES)),)
-EM_RECIPE_BUILD_RULES  += $(1)
+$(eval EM_RECIPE_RULE := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_RULE),\
+		$(EM_RECIPE_BUILD_RULES)),)
+EM_RECIPE_BUILD_RULES  += $(EM_RECIPE_RULE)
 endif
 endef
 ########################################################################
@@ -141,8 +160,11 @@ endef
 ########################################################################
 EM_RECIPE_LINK_RULES   ?=
 define EM_RECIPE_ADD_LINK_RULE
-ifeq ($(filter $(1),$(EM_RECIPE_LINK_RULES)),)
-EM_RECIPE_LINK_RULES  += $(1)
+$(eval EM_RECIPE_RULE := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_RULE),\
+		$(EM_RECIPE_LINK_RULES)),)
+EM_RECIPE_LINK_RULES  += $(EM_RECIPE_RULE)
 endif
 endef
 ########################################################################
@@ -150,8 +172,11 @@ endef
 ########################################################################
 EM_RECIPE_LIBS  ?=
 define EM_RECIPE_ADD_LIB
-ifeq ($(filter $(1),$(EM_RECIPE_LIBS)),)
-EM_RECIPE_LIBS  += $(1)
+$(eval EM_RECIPE_LIB := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_LIB),\
+		$(EM_RECIPE_LIBS)),)
+EM_RECIPE_LIBS  += $(EM_RECIPE_LIB)
 endif
 endef
 ########################################################################
@@ -159,8 +184,11 @@ endef
 ########################################################################
 EM_RECIPE_CFLAGS  ?=
 define EM_RECIPE_ADD_CFLAGS
-ifeq ($(filter $(1),$(EM_RECIPE_CFLAGS)),)
-EM_RECIPE_CFLAGS  += $(1)
+$(eval EM_RECIPE_CFLAG := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_CFLAG),\
+	$(EM_RECIPE_CFLAGS)),)
+EM_RECIPE_CFLAGS  += $(EM_RECIPE_CFLAG)
 endif
 endef
 ########################################################################
@@ -168,8 +196,11 @@ endef
 ########################################################################
 EM_RECIPE_LDFLAGS  ?=
 define EM_RECIPE_ADD_LDFLAGS
-ifeq ($(filter $(1),$(EM_RECIPE_LDFLAGS)),)
-EM_RECIPE_LDFLAGS  += $(1)
+$(eval EM_RECIPE_LDFLAG := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_RECIPE_LDFLAG),\
+		$(EM_RECIPE_LDFLAGS)),)
+EM_RECIPE_LDFLAGS  += $(EM_RECIPE_LDFLAG)
 endif
 endef
 ########################################################################
@@ -178,7 +209,7 @@ endef
 EM_RECIPE_REQS  ?=
 EM_RECIPE_DEPS  ?=
 define EM_RECIPE_ADD_DEP
-EM_RECIPE_REQS  += $(1)
-EM_RECIPE_DEPS  += $(2)
+EM_RECIPE_REQS  += $(strip $(1))
+EM_RECIPE_DEPS  += $(strip $(2))
 endef
 ########################################################################

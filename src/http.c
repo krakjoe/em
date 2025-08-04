@@ -111,7 +111,7 @@ static php_stream_ops em_http_ops = {
 static php_stream *em_http_wrapper_open(php_stream_wrapper *wrapper, 
                                   const char *path, const char *mode,
                                   int options, zend_string **opened_path,
-                                  php_stream_context *context) {
+                                  php_stream_context *context STREAMS_DC) {
     em_http_abstract_t* abstract = 
         (em_http_abstract_t*)
             pecalloc(1, sizeof(em_http_abstract_t), 1);
