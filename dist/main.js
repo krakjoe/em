@@ -15,30 +15,6 @@ const demos = {
 
 const modal = new Modal();
 
-// Utility functions for UI performance
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-let scheduleRenderTabsScheduled = false;
-function scheduleRenderTabs() {
-    if (!scheduleRenderTabsScheduled) {
-        scheduleRenderTabsScheduled = true;
-        requestAnimationFrame(() => {
-            renderTabs();
-            scheduleRenderTabsScheduled = false;
-        });
-    }
-}
-
 // 2. Global state variables
 let currentOpenTab = null;
 let currentOpenFile = null;
@@ -96,39 +72,42 @@ function normalizePath(path) {
     return normal;
 }
 
-function scheduleRenderTabs() {
-    tabBar.innerHTML = '';
-    openTabs.forEach((tab, index) => {
-        // Handle in open tabs
-        tab.index = index;
+function renderTabs() {
+    requestAnimationFrame(() => {
+        tabBar.innerHTML = '';
+        openTabs.forEach((tab, index) => {
+            // Handle in open tabs
+            tab.index = index;
 
-        // Handle in tab list (DOM)
-        tab.handle = document.createElement('div');
-        tab.handle.className =
-            'tab' + 
-                (currentOpenTab == tab ?
-                        ' active' : '');
-        tab.handle.textContent = tab.name;
-        tab.handle.style.padding = '0.5em 1em';
-        tab.handle.style.cursor = 'pointer';
-        tab.handle.style.background =
-            (currentOpenTab == tab) ?
-                '#232f3e' : 'transparent';
-        tab.handle.style.borderRight = '1px solid #404040';
-        tab.handle.onclick = () => switchTabView(tab);
+            // Handle in tab list (DOM)
+            tab.handle = document.createElement('div');
+            tab.handle.className =
+                'tab' + 
+                    (currentOpenTab == tab ?
+                            ' active' : '');
+            tab.handle.textContent = tab.name;
+            tab.handle.style.padding = '0.5em 1em';
+            tab.handle.style.cursor = 'pointer';
+            tab.handle.style.background =
+                (currentOpenTab == tab) ?
+                    '#232f3e' : 'transparent';
+            tab.handle.style.borderRight = '1px solid #404040';
+            tab.handle.onclick = () => switchTabView(tab);
 
-        // Close button on handle
-        tab.close = document.createElement('span');
-        tab.close.textContent = ' ×';
-        tab.close.style.cursor = 'pointer';
-        tab.close.style.marginLeft = '0.5em';
-        tab.close.onclick = (event) => {
-            event.stopPropagation();
-            closeTabView(tab);
-        };
-        tab.handle.appendChild(tab.close);
-        tabBar.appendChild(tab.handle);
-    });
+            // Close button on handle
+            tab.close = document.createElement('span');
+            tab.close.textContent = ' ×';
+            tab.close.style.cursor = 'pointer';
+            tab.close.style.marginLeft = '0.5em';
+            tab.close.onclick = (event) => {
+                closeTabView(tab);
+
+                event.stopPropagation();
+            };
+            tab.handle.appendChild(tab.close);
+            tabBar.appendChild(tab.handle);
+        });
+    })
 }
 
 function selectTab(path, name) {
@@ -168,13 +147,9 @@ function switchTabView(tab) {
     }
 
     currentOpenTab = tab;
-    
-    // Use a small delay to prevent rapid editor updates
-    setTimeout(() => {
-        editor.setValue(currentOpenTab.content || '');
-        updateCurrentFileDisplay();
-        scheduleRenderTabs();
-    }, 0);
+    editor.setValue(currentOpenTab.content || '');
+    updateCurrentFileDisplay();
+    renderTabs();
 }
 
 function switchTab(path, name) {
@@ -190,13 +165,10 @@ function closeTabView(tab) {
                 Math.max(0, tab.index - 1)]);
         } else {
             currentOpenTab = null;
-            unsavedChanges = false;
             editor.setValue('');
-            updateCurrentFileDisplay();
+            renderTabs();
         }
     }
-
-    scheduleRenderTabs();
 }
 
 function closeTab(path, name) {
@@ -431,9 +403,8 @@ async function saveCurrentFile() {
         console.error(`Error saving file: ${currentOpenTab.path}`, error);
         updateStatus(`Error saving file: ${currentOpenTab.path}`, 'error');
     } finally {
-        updateCurrentFileDisplay();
         refreshFileTree();
-        scheduleRenderTabs();
+        renderTabs();
     }
 }
 
@@ -617,7 +588,7 @@ function performRename(newName) {
                 updateCurrentFileDisplay();
             }
             refreshFileTree();
-            scheduleRenderTabs();
+            renderTabs();
         } else {
             updateStatus(`Failed to rename: ${currentContextPath}`, 'error');
         }
@@ -917,7 +888,7 @@ function initializeEditor() {
     } else {
         editor.setValue(demos.hello);
     }
-    scheduleRenderTabs();
+    renderTabs();
 }
 
 
@@ -1178,7 +1149,7 @@ function runCode() {
                     updateCurrentFileDisplay();
                     updateStatus(`Saved: ${currentOpenFile}`, 'success');
                     refreshFileTree();
-                    scheduleRenderTabs();
+                    renderTabs();
                 } else {
                     updateStatus(`Failed to save: ${currentOpenFile}`, 'error');
                     return;
