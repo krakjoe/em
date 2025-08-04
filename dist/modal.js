@@ -32,7 +32,11 @@ class Modal {
         return new Promise((onResolve, onReject) => {
             this.title.show(title);
             this.info.show(info);
-            this.input.show(input);
+            if (input === null) {
+                this.input.hide();
+            } else {
+                this.input.show(input);
+            }
             this.accept.show(
                 accept.text, () => {
                     if (accept.handler) {

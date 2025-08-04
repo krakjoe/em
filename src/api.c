@@ -31,6 +31,8 @@
 #include "vfs.h"
 #include "http.h"
 #include "api.h"
+#include "dispatch.h"
+#include "buffer.h"
 
 extern sapi_module_struct em_sapi_module;
 
@@ -79,58 +81,6 @@ static zend_op_array*
     em_compile_file(
         zend_file_handle* fh, int type);
 
-typedef struct _em_string_t {
-    char* value;
-    size_t length;
-    size_t max;
-} em_string_t;
-
-/* {{{ buffering */
-em_string_t __em_buffer = (em_string_t) {
-    .value  = NULL,
-    .length = 0,
-    .max    = 0,
-};
-
-void em_clear(bool _free) {
-    if (__em_buffer.value) {
-        if (_free) {
-            free(__em_buffer.value);
-
-            __em_buffer.value = NULL;
-            __em_buffer.max   = 0;
-        } else {
-            memset(
-                __em_buffer.value,
-                0, __em_buffer.max);
-        }
-    } else {
-        __em_buffer.max = 0;
-    }
-    __em_buffer.length = 0;
-}
-
-size_t em_buffer(const char* buf, size_t len) {
-    if (__em_buffer.length + len >= __em_buffer.max) {
-        __em_buffer.max = __em_buffer.length + len + 1024;
-        __em_buffer.value = realloc(
-            __em_buffer.value, __em_buffer.max);
-        if (!__em_buffer.value) {
-            return 0;
-        }
-    }
-
-    memcpy(
-    __em_buffer.value +
-        __em_buffer.length,
-    buf, len);
-    __em_buffer.length += len;
-    __em_buffer.value[
-        __em_buffer.length] = 0;
-
-    return len;
-} /* }}} */
-
 /* {{{ logging */
 void em_buffer_log(const char* message, int type) {
     zend_string* msg = zend_strpprintf(
@@ -138,8 +88,7 @@ void em_buffer_log(const char* message, int type) {
         message
     );
 
-    em_buffer(
-        ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_buffer_response(ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 
@@ -151,7 +100,7 @@ void em_buffer_error(int type, const char* file, const uint32_t lineno, zend_str
         lineno,
         ZSTR_VAL(message)
     );
-    em_buffer(ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_buffer_response(ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 #else
@@ -162,24 +111,28 @@ void em_buffer_error(int type, zend_string* file, const uint32_t lineno, zend_st
         lineno,
         ZSTR_VAL(message)
     );
-    em_buffer(ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_buffer_response(ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 #endif /* }}} */
 
 /* {{{ code lifecycle management */
 static zend_always_inline zend_result
-    em_activate(void) {
+    em_activate(bool headers) {
+
     if (php_request_startup() != SUCCESS) {
         php_module_shutdown();
 
         return FAILURE;
     }
 
+    SG(headers_sent)            = !headers;
+    SG(request_info).no_headers = !headers;
+
     em_http_activate();
     em_vfs_activate();
 
-    em_clear(false);
+    em_buffer_clear(&__em_response_buffer, false);
 
     zend_compile_func = zend_compile_file;
     zend_compile_file = em_compile_file;
@@ -188,8 +141,8 @@ static zend_always_inline zend_result
 }
 
 static long em_string_read(void *handle, char *buf, size_t len) {
-    em_string_t* string =
-    	(em_string_t*)handle;
+    em_buffer_t* string =
+    	(em_buffer_t*)handle;
  
     if (len > string->length) {
     	len = string->length;
@@ -206,8 +159,8 @@ static long em_string_read(void *handle, char *buf, size_t len) {
 }
 
 static size_t em_string_length(void *handle) {
-    em_string_t* string =
-    	(em_string_t*) handle;
+    em_buffer_t* string =
+    	(em_buffer_t*) handle;
     return string->length;
 }
 
@@ -234,11 +187,9 @@ static zend_always_inline
     return compiled;
 }
 
-static zend_always_inline
-    zend_op_array*
-        em_compile_string(const char* code, size_t length) {
-    em_string_t string =
-    	(em_string_t) {
+zend_op_array* em_compile_string(const char* code, size_t length) {
+    em_buffer_t string =
+    	(em_buffer_t) {
     	    .value   = (char*) code,
     	    .length  = length
     };
@@ -258,9 +209,7 @@ static zend_always_inline
     return compiled;
 }
 
-static zend_always_inline
-    zend_op_array*
-        em_compile_script(const char* script) {
+zend_op_array* em_compile_script(const char* script) {
     zend_file_handle fh;
     zend_stream_init_filename(&fh, script);
     fh.type = ZEND_HANDLE_FILENAME;
@@ -271,8 +220,7 @@ static zend_always_inline
     return compiled;
 }
 
-static zend_always_inline
-    void em_execute(zend_op_array* ops) {
+void em_execute(zend_op_array* ops) {
     zval retval;
     ZVAL_UNDEF(&retval);
 
@@ -306,9 +254,14 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 #endif
 #endif
 
+    zend_signal_startup();
+
     sapi_startup(&em_sapi_module);
 
-    em_sapi_module.ini_entries = (char*) EM_INI;
+    em_sapi_module.ini_entries =
+        malloc(sizeof(EM_INI));
+    memcpy(em_sapi_module.ini_entries,
+        EM_INI, sizeof(EM_INI));
 
     /* do not attempt to scan search paths for ini */
     em_sapi_module.php_ini_ignore = 1;
@@ -318,13 +271,11 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
   	}
 
     SG(options)                |= SAPI_OPTION_NO_CHDIR;
-    SG(headers_sent)            = 1;
-    SG(request_info).no_headers = 1;
 
     zend_log_func   = sapi_module.log_message;
     zend_write_func = sapi_module.ub_write;
 
-    sapi_module.ub_write = em_buffer;
+    sapi_module.ub_write    = em_buffer_response;
     sapi_module.log_message = em_buffer_log;
 
     em_http_startup();
@@ -334,7 +285,7 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(const char* code, size_t length) {
-    if (em_activate() != SUCCESS) {
+    if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
@@ -347,11 +298,11 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(const char* code, size_t length) {
 
     em_deactivate();
 
-    return (uintptr_t) __em_buffer.value;
+    return (uintptr_t) __em_response_buffer.value;
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_script(const char* script) {
-    if (em_activate() != SUCCESS) {
+    if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
@@ -364,15 +315,41 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_script(const char* script) {
 
     em_deactivate();
 
-    return (uintptr_t) __em_buffer.value;
+    return (uintptr_t) __em_response_buffer.value;
+}
+
+uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
+    const char* method,
+    const char* uri,
+    const char* mime,
+    const char* request,
+    size_t length) {
+    sapi_request_info* info = &SG(request_info);
+
+    em_dispatch_handler_t em_dispatch_request =
+        em_dispatch_setup(
+            info, method, uri,
+            mime, request, length);
+
+    if (em_activate(true) != SUCCESS) {
+        return (uintptr_t) -1;
+    }
+
+    em_dispatch_request(info);
+
+__em_run_request_leave:
+    em_dispatch_cleanup(info);
+    em_deactivate();
+
+    return (uintptr_t) __em_response_buffer.value;
 }
 
 size_t EMSCRIPTEN_KEEPALIVE em_run_length(void) {
-    return __em_buffer.length;
+    return __em_response_buffer.length;
 }
 
 void EMSCRIPTEN_KEEPALIVE em_run_free(void) {
-    em_clear(true);
+    em_buffer_clear(&__em_response_buffer, true);
 }
 
 void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
@@ -389,6 +366,10 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
 #ifdef ZTS
     tsrm_shutdown();
 #endif
+
+    if (em_sapi_module.ini_entries) {
+        free(em_sapi_module.ini_entries);
+    }
 } /* }}} */
 
 /* {{{ sapi gubbins */
@@ -449,10 +430,92 @@ static char* em_sapi_cookies(void)
 	return NULL;
 }
 
-static void em_sapi_header(sapi_header_struct *header, void *ctx)
-{
-    (void) header;
-    (void) ctx;
+static size_t em_sapi_post(char* buffer, size_t length) {
+    if (!__em_request_buffer.length) {
+        /* nothing buffered */
+        return 0;
+    }
+
+    if (__em_request_buffer.position == __em_request_buffer.length) {
+        /* empty buffer */
+        return 0;
+    }
+
+    /* grab a chunk of buffer */
+    size_t chunk =
+        length > (__em_request_buffer.length - __em_request_buffer.position) ?
+            (__em_request_buffer.length - __em_request_buffer.position) :
+                length;
+
+    memcpy(buffer,
+        __em_request_buffer.value + __em_request_buffer.position,
+        chunk);
+
+    __em_request_buffer.position += chunk;
+
+    return chunk;
+}
+
+sapi_header_struct* em_sapi_headers_status(sapi_headers_struct* all, zend_llist_position* position) {
+    sapi_header_struct* one = zend_llist_get_first_ex(&all->headers, position);
+
+    do {
+        if (!one) {
+            break;
+        }
+
+        if ((one->header_len > sizeof("Status:")-1) &&
+            (strncasecmp(one->header,
+                "Status:", sizeof("Status:")-1) == SUCCESS)) {
+            return one;
+        }
+    } while ((one = zend_llist_get_next_ex(&all->headers, position)));
+
+    return NULL;
+}
+
+static int em_sapi_headers(sapi_headers_struct* all) {
+    if (SG(request_info).no_headers) {
+        SG(headers_sent) = 1;
+
+        return SAPI_HEADER_SENT_SUCCESSFULLY;
+    }
+    zend_llist_position position;
+    sapi_header_struct* status =
+        em_sapi_headers_status(all, &position);
+
+    /* send status line first */
+    if (status) {
+        em_buffer_response(status->header, status->header_len);
+        em_buffer_response(ZEND_STRL("\r\n"));
+    } else {
+        char buffer[4096];
+        snprintf(buffer, 4096,
+            "HTTP/1.0 %d %s",
+            all->http_response_code, all->http_status_line);
+        em_buffer_response(buffer, strlen(buffer));
+        em_buffer_response(ZEND_STRL("\r\n"));
+    }
+    
+    /* send remainder of headers */
+    sapi_header_struct* next = zend_llist_get_first_ex(&all->headers, &position);
+    do {
+        if (!next) {
+            goto __em_sapi_headers_leave;
+        }
+
+        if (next == status) {
+            continue;
+        }
+
+        em_buffer_response(next->header, next->header_len);
+        em_buffer_response(ZEND_STRL("\r\n"));
+    } while ((next = zend_llist_get_next_ex(&all->headers, &position)));
+
+__em_sapi_headers_leave:
+    em_buffer_response(ZEND_STRL("\r\n"));
+
+    return SAPI_HEADER_SENT_SUCCESSFULLY;
 }
 
 static void em_sapi_env(zval *vars)
@@ -461,8 +524,8 @@ static void em_sapi_env(zval *vars)
 }
 
 sapi_module_struct em_sapi_module = {
-    "cli",                        /* name, lies */
-    "em SAPI",                    /* pretty name */
+    "em",                         /* name */
+    "em",                         /* pretty name */
     em_sapi_startup,              /* startup */
     php_module_shutdown_wrapper,  /* shutdown */
     NULL,                         /* activate */
@@ -473,9 +536,9 @@ sapi_module_struct em_sapi_module = {
     NULL,                         /* getenv */
     em_sapi_error,                /* error handler */
     NULL,                         /* header handler */
-    NULL,                         /* send headers handler */
-    em_sapi_header,               /* send header handler */
-    NULL,                         /* read post */
+    em_sapi_headers,              /* send headers handler */
+    NULL,                         /* send header handler */
+    em_sapi_post,                 /* read post */
     em_sapi_cookies,              /* read cookies */
     em_sapi_env,                  /* register server variables */
     em_sapi_log,                  /* log message */

@@ -600,6 +600,10 @@ void* EMSCRIPTEN_KEEPALIVE
             vpath->filename, strlen(vpath->filename));
     em_vfs_path_release(vpath);
 
+    if (!node) {
+        return NULL;
+    }
+
     if (node->kind == EM_VFS_DIR) {
         return NULL;
     }

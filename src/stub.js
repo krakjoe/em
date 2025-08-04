@@ -40,6 +40,123 @@ Module.startup = function() {
 };
 
 /**
+ * Shall dispatch the given request
+ * @param {string} method
+ * @param {string} uri
+ * @param {string} mime
+ * @param {string} request
+ * @param {HTMLElement|Function|undefined} output
+ * @returns string
+ */
+Module.dispatch = function(method, uri, mime = null, request = null, output) {
+    // Fire start event
+    Module.dispatchEvent(new CustomEvent('dispatch.begin', { 
+        detail: { 
+            "method":  method,
+            "uri":     uri,
+            "mime":    mime,
+            "request": request,
+            "output":  output 
+        }
+    }));
+
+    // run the request, getting response address and length in return
+    let result = {
+        address: Module.ccall(
+            'em_run_request',
+            'number',
+            [ 'string', 'string', 'string',
+                'string', 'number' ],
+            [ method, uri, mime,
+                request, request ? lengthBytesUTF8(request) : 0 ]),
+        length: Module.ccall(
+            'em_run_length', 'number')
+    };
+
+    // check for errors
+    if (result.address < 0) {
+        // Fire error event
+        Module.dispatchEvent(new CustomEvent('dispatch.error', { 
+            detail: { 
+                "method": method,
+                "uri": uri,
+                "mime": mime,
+                "request": request,
+                "output": output,
+                "result": result }
+        }));
+
+        // we don't need to care about freeing, nothing was allocated
+        throw new Error("Unexpected result, dispatch failed");
+    }
+
+    // ensure there's stuff to read on the heap
+    if (!result.length) {
+        // Fire error event
+        Module.dispatchEvent(new CustomEvent('dispatch.error', { 
+            detail: {
+                "method":  method,
+                "uri":     uri,
+                "mime":    mime,
+                "request": request,
+                "output":  output,
+                "result":  result }
+        }));
+
+        // we don't need to care about freeing, nothing was allocated
+        throw new Error("Unexpected result, no output");
+    }
+
+    let text = null;
+
+    try {
+        // This ensures consistent encoding handling
+        text = Module.iou.fromBytes(result.address, result.length);
+    } catch (exception) {
+        // Fire exception event
+        Module.dispatchEvent(new CustomEvent('dispatch.exception', { 
+            detail: { 
+                "method":    method,
+                "uri":       uri,
+                "mime":      mime,
+                "request":   request,
+                "output":    output,
+                "result":    result,
+                "exception": exception }
+        }));
+
+        throw exception;
+    } finally {
+        // release the buffer that em alloc'd
+        Module.ccall('em_run_free');
+    }
+
+   // Fire end event
+    Module.dispatchEvent(new CustomEvent('dispatch.end', { 
+        detail: { 
+            "method":  method,
+            "uri":     uri,
+            "mime":    mime,
+            "request": request,
+            "output":  output,
+            "text":    text }
+    }));
+
+    if (typeof output === 'undefined') {
+        return text;
+    } else if (typeof HTMLElement !== 'undefined' &&
+        output instanceof HTMLElement) {
+        return output.textContent = text;
+    } else if (typeof output === 'function') {
+        return output(text);
+    }
+
+    throw new TypeError(
+        "Unexpected output type, " +
+        "expected HTMLElement|Function|undefined");   
+}
+
+/**
  * Shall include a file from the vfs
  * @param {string} script 
  * @param {HTMLElement|Function|undefined} output

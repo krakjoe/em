@@ -16,30 +16,27 @@
   +----------------------------------------------------------------------+
  */
 
-#ifndef HAVE_EM_API
-#define HAVE_EM_API
+#ifndef HAVE_EM_BUFFER
+#define HAVE_EM_BUFFER
 #include <emscripten.h>
 
 #include <php.h>
 
-int EMSCRIPTEN_KEEPALIVE em_startup(void);
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(
-    const char* code, size_t length);
-uintptr_t EMSCRIPTEN_KEEPALIVE
-  em_run_script(const char* script);
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
-    const char* method,
-    const char* uri,
-    const char* mime,
-    const char* request,
-    size_t length);
-size_t EMSCRIPTEN_KEEPALIVE em_run_length(void);
-void EMSCRIPTEN_KEEPALIVE em_run_free(void);
-void EMSCRIPTEN_KEEPALIVE em_shutdown(void);
+typedef struct _em_buffer_t {
+    char* value;
+    size_t length;
+    size_t max;
+    size_t position;
+} em_buffer_t;
 
-zend_op_array* em_compile_script(
-  const char* script);
-zend_op_array* em_compile_string(
-  const char* code, size_t length);
-void em_execute(zend_op_array* ops);
+#define EM_BUFFER_EMPTY (em_buffer_t) {NULL, 0, 0, 0}
+
+extern em_buffer_t __em_request_buffer;
+extern em_buffer_t __em_response_buffer;
+
+size_t em_buffer_request(const char* buf, size_t len);
+size_t em_buffer_response(const char* buf, size_t len);
+
+size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len);
+void em_buffer_clear(em_buffer_t* buffer, bool _free);
 #endif

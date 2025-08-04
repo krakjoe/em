@@ -16,30 +16,17 @@
   +----------------------------------------------------------------------+
  */
 
-#ifndef HAVE_EM_API
-#define HAVE_EM_API
+#ifndef HAVE_EM_DISPATCH
+#define HAVE_EM_DISPATCH
 #include <emscripten.h>
 
-#include <php.h>
+#include <SAPI.h>
 
-int EMSCRIPTEN_KEEPALIVE em_startup(void);
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(
-    const char* code, size_t length);
-uintptr_t EMSCRIPTEN_KEEPALIVE
-  em_run_script(const char* script);
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
-    const char* method,
-    const char* uri,
-    const char* mime,
-    const char* request,
-    size_t length);
-size_t EMSCRIPTEN_KEEPALIVE em_run_length(void);
-void EMSCRIPTEN_KEEPALIVE em_run_free(void);
-void EMSCRIPTEN_KEEPALIVE em_shutdown(void);
+typedef void(*em_dispatch_handler_t)(sapi_request_info* info);
 
-zend_op_array* em_compile_script(
-  const char* script);
-zend_op_array* em_compile_string(
-  const char* code, size_t length);
-void em_execute(zend_op_array* ops);
+em_dispatch_handler_t em_dispatch_setup(
+    sapi_request_info* info,
+    const char* method, const char* uri, const char* mime,
+    const char* request, size_t length);
+void em_dispatch_cleanup(sapi_request_info* info);
 #endif

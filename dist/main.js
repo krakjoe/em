@@ -717,21 +717,27 @@ function deleteFile() {
     }
 
     if (!currentContextPath) return;
-    if (!confirm(`Are you sure you want to delete ${currentContextPath}?`)) {
-        return;
-    }
+
     try {
-        if (Module.vfs.unlink(currentContextPath, true)) {
-            const deletedTab = openTabs.find(
-                tab => tab.path === currentContextPath);
-            if (deletedTab) {
-                closeTabView(deletedTab);
+        modal.show(
+            'Confirmation',
+            `Are you sure you want to delete ${currentContextPath}?`,
+            null,
+            { text: 'Yes' },
+            { text: 'Cancel' }
+        ).then((response) => {
+            if (Module.vfs.unlink(currentContextPath, true)) {
+                const deletedTab = openTabs.find(
+                    tab => tab.path === currentContextPath);
+                if (deletedTab) {
+                    closeTabView(deletedTab);
+                }
+                refreshFileTree();
+                updateStatus(`Deleted: ${currentContextPath}`, 'success');
+            } else {
+                updateStatus(`Failed to delete: ${currentContextPath}`, 'error');
             }
-            refreshFileTree();
-            updateStatus(`Deleted: ${currentContextPath}`, 'success');
-        } else {
-            updateStatus(`Failed to delete: ${currentContextPath}`, 'error');
-        }
+        }).catch(() => {});
     } catch (error) {
         console.error('Error deleting file:', error);
         updateStatus(`Error deleting: ${currentContextPath}`, 'error');
@@ -975,7 +981,7 @@ function initializeEditor() {
                 currentOpenTab.unsaved = 
                     (currentContent !== currentOpenTab.vfsContent);
             } else {
-                // Compare agaisnt demo for demos
+                // Compare against demo for demos
                 currentOpenTab.unsaved =
                     (currentContent !== demos[currentOpenTab.source]);
             }
@@ -984,13 +990,22 @@ function initializeEditor() {
         }
     });
 
-    const savedCode = sessionStorage.getItem('em-demo-code');
-    if (savedCode) {
-        editor.setValue(savedCode);
+    const initialContent =
+        sessionStorage.getItem('em-demo-code');
+    const initialTab = {
+        name: 'untitled.php',
+        path: null,
+        content: initialContent ?
+            initialContent : demos["hello"],
+        unsaved: false,
+    };
+    openTabs.push(initialTab);
+    switchTabView(initialTab);
+
+    if (initialContent) {
         sessionStorage.removeItem('em-demo-code');
-    } else {
-        editor.setValue(demos.hello);
     }
+
     renderTabs();
 }
 
@@ -1234,44 +1249,33 @@ function runCode() {
         updateStatus('PHP runtime not ready', 'error');
         return;
     }
-    const code = editor.getValue().trim();
-    if (!code) {
-        updateStatus('No code to run', 'error');
-        return;
-    }
-    if (currentOpenFile) {
-        const tab = openTabs.find(t => t.path === currentOpenFile);
-        if (tab && (tab.unsaved || tab.content !== editor.getValue())) {
-            const shouldSave = confirm('You have unsaved changes. Save before running?');
-            if (shouldSave) {
-                const content = editor.getValue();
-                const success = Module.vfs.put(currentOpenFile, content);
-                if (success) {
-                    tab.content = content;
-                    tab.unsaved = false;
-                    updateStatus(`Saved: ${currentOpenFile}`, 'success');
-                    refreshFileTree();
-                    renderTabs();
-                } else {
-                    updateStatus(`Failed to save: ${currentOpenFile}`, 'error');
-                    return;
-                }
+
+    if (currentOpenTab && currentOpenTab.path) {
+        if (currentOpenTab.unsaved) {
+            const currentOpenTabContent = editor.getValue();
+            if (Module.vfs.put(
+                    currentOpenTab.path, currentOpenTabContent)) {
+                currentOpenTab.content = currentOpenTabContent;
+                currentOpenTab.unsaved = false;
+                updateStatus(`Saved: ${currentOpenTab.path}`, 'success');
+                refreshFileTree();
+                renderTabs();
             } else {
-                updateStatus('Run cancelled (unsaved changes)', 'error');
+                updateStatus(`Failed to save: ${currentOpenTab.path}`, 'error');
                 return;
             }
         }
         runButton.disabled = true;
-        updateStatus(`Running: ${currentOpenFile}`, 'loading');
+        updateStatus(`Running: ${currentOpenTab.path}`, 'loading');
         outputStatus.textContent = 'Running...';
         try {
-            const result = Module.include(currentOpenFile);
+            const result = Module.include(currentOpenTab.path);
             output.textContent = result;
-            updateStatus(`Ran: ${currentOpenFile}`, 'success');
+            updateStatus(`Ran: ${currentOpenTab.path}`, 'success');
             outputStatus.textContent = 'Complete';
         } catch (error) {
             output.textContent = `Error: ${error.message}`;
-            updateStatus(`Execution failed: ${currentOpenFile}`, 'error');
+            updateStatus(`Execution failed: ${currentOpenTab.path}`, 'error');
             outputStatus.textContent = 'Error';
             console.error('Execution error:', error);
         } finally {
@@ -1279,11 +1283,13 @@ function runCode() {
             refreshFileTree();
         }
     } else {
+        const currentEditorCode = editor.getValue().trim();
+        
         runButton.disabled = true;
         updateStatus('Running code...', 'loading');
         outputStatus.textContent = 'Running...';
         try {
-            const result = Module.invoke(code);
+            const result = Module.invoke(currentEditorCode);
             output.textContent = result;
             updateStatus('Code executed successfully', 'success');
             outputStatus.textContent = 'Complete';
