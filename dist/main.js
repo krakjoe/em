@@ -147,8 +147,38 @@ function switchTabView(tab) {
         }
     }
 
+    // !This is the only place that should ever set currentOpenTab!
     currentOpenTab = tab;
-    editor.setValue(currentOpenTab.content || '');
+
+    // Set appropriate mode based on file extension
+    const currentOpenExtension = currentOpenTab.path ?
+        currentOpenTab.path.split('.').pop().toLowerCase() :
+        currentOpenTab.name.split('.').pop().toLowerCase();
+    let currentOpenMode = 'application/x-httpd-php';
+    switch(currentOpenExtension) {
+        case 'md':
+        case 'markdown':
+            currentOpenMode = 'markdown';
+            break;
+        case 'js':
+            currentOpenMode = 'javascript';
+            break;
+        case 'css':
+            currentOpenMode = 'css';
+            break;
+        case 'html':
+        case 'htm':
+            currentOpenMode = 'htmlmixed';
+            break;
+        case 'json':
+            currentOpenMode = { 
+                name: 'javascript', json: true
+            };
+            break;
+    }
+    editor.setOption('mode', currentOpenMode);
+    editor.setValue(
+        currentOpenTab.content || '');
     renderTabs();
 }
 
