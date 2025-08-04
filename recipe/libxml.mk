@@ -48,6 +48,7 @@ $(EM_LIBXML_CONFIGURED): $(EM_LIBXML_TAR)
 			--with-writer \
 			--without-iconv \
 			--without-icu \
+			--without-python \
 			--with-zlib=$(EM_ZLIB_SRC) \
 			--prefix=$(EM_LIBXML_SRC) \
 			$(EM_LIBXML_OPTS)
