@@ -26,6 +26,10 @@ let currentPHPVersion;
 let vfsDecoder = new TextDecoder('utf-8');
 
 const tabBar = document.getElementById('tabBar');
+const tabContainer = document.querySelector('.tab-container');
+const tabScrollLeftButton = document.querySelector('.tab-nav-button.left');
+const tabScrollRightButton = document.querySelector('.tab-nav-button.right');
+
 const phpVersionSelect = document.getElementById('phpVersion');
 const runButton = document.getElementById('runButton');
 const clearOutputButton = document.getElementById('clearOutput');
@@ -73,40 +77,58 @@ function normalizePath(path) {
 }
 
 function renderTabs() {
+    const tabContainer = document.querySelector('.tab-container');
     requestAnimationFrame(() => {
-        tabBar.innerHTML = '';
-        openTabs.forEach((tab, index) => {
-            // Handle in open tabs
-            tab.index = index;
+        // Store current scroll position
+        const currentScroll = tabContainer.scrollLeft;
 
-            // Handle in tab list (DOM)
+        // Clear existing tabs
+        tabContainer.innerHTML = '';
+
+        // Create and append tabs
+        openTabs.forEach((tab, index) => {
+            tab.index = index;
             tab.handle = document.createElement('div');
-            tab.handle.className =
-                'tab' + 
-                    (currentOpenTab == tab ?
-                            ' active' : '');
+            tab.handle.className = 'tab' + (currentOpenTab == tab ? ' active' : '');
             tab.handle.textContent = tab.name;
-            tab.handle.style.padding = '0.5em 1em';
-            tab.handle.style.cursor = 'pointer';
-            tab.handle.style.background =
-                (currentOpenTab == tab) ?
-                    '#232f3e' : 'transparent';
-            tab.handle.style.borderRight = '1px solid #404040';
             tab.handle.onclick = () => switchTabView(tab);
 
             // Close button on handle
             tab.close = document.createElement('span');
             tab.close.textContent = ' ×';
-            tab.close.style.cursor = 'pointer';
-            tab.close.style.marginLeft = '0.5em';
+            tab.close.className = 'tab-close';
             tab.close.onclick = (event) => {
                 closeTabView(tab);
-
                 event.stopPropagation();
             };
             tab.handle.appendChild(tab.close);
-            tabBar.appendChild(tab.handle);
+            tabContainer.appendChild(tab.handle);
         });
+
+        // After all tabs are rendered, ensure active tab is visible if there is one
+        const activeTab = tabContainer.querySelector('.tab.active');
+        if (activeTab) {
+            const containerWidth = tabContainer.clientWidth;
+            const tabLeft = activeTab.offsetLeft;
+            const tabWidth = activeTab.offsetWidth;
+            const rightEdge = currentScroll + containerWidth;
+
+            // If active tab is outside the current view, scroll to make it visible
+            if (tabLeft < currentScroll || (tabLeft + tabWidth) > rightEdge) {
+                const targetScroll = Math.max(0, tabLeft - (containerWidth - tabWidth) / 2);
+                tabContainer.scrollTo({
+                    left: targetScroll,
+                    behavior: 'smooth'
+                });
+            } else {
+                // Restore the scroll position if no scrolling needed
+                tabContainer.scrollLeft = currentScroll;
+            }
+        }
+
+        // Force layout recalculation and update nav buttons
+        tabContainer.offsetWidth;
+        updateNavButtons();
         updateCurrentFileDisplay();
     })
 }
@@ -716,7 +738,57 @@ function deleteFile() {
     }
 }
 
+function updateNavButtons() {
+    if (!tabContainer ||
+        !tabScrollLeftButton ||
+        !tabScrollRightButton) {
+        return;
+    }
+
+    // Get all scroll values
+    const scrollLeft = Math.floor(tabContainer.scrollLeft);
+    const scrollWidth = tabContainer.scrollWidth;
+    const clientWidth = tabContainer.clientWidth;
+    const maxScroll = scrollWidth - clientWidth;
+
+    tabScrollLeftButton.disabled = scrollLeft <= 0;
+    tabScrollRightButton.disabled = scrollLeft >= maxScroll;
+}
+
 function initializeEventHandlers() {
+    // Initial check
+    updateNavButtons();
+
+    tabScrollLeftButton.onclick = (e) => {
+        e.preventDefault();
+        tabContainer.scrollBy({
+            left: -100,
+            behavior: 'smooth'
+        });
+        setTimeout(updateNavButtons, 100);
+    };
+
+    tabScrollRightButton.onclick = (e) => {
+        e.preventDefault();
+        tabContainer.scrollBy({
+            left: 100,
+            behavior: 'smooth'
+        });
+        setTimeout(updateNavButtons, 100);
+    };
+    
+    // Update buttons when tabs change or container scrolls
+    tabContainer.addEventListener('scroll',
+        () => requestAnimationFrame(updateNavButtons));
+
+    // Watch for resize and mutations
+    new ResizeObserver(
+        () => requestAnimationFrame(updateNavButtons)
+    ).observe(tabContainer);
+    new MutationObserver(
+        () => requestAnimationFrame(updateNavButtons)
+    ).observe(tabContainer, { childList: true, subtree: true });
+
     phpVersionSelect.value = currentPHPVersion;
     phpVersionSelect.addEventListener('change', switchPHPVersion);
     runButton.addEventListener('click', runCode);
