@@ -252,7 +252,7 @@ clean-deps:
 
 clean: clean-recipes clean-objects clean-bin clean-deps
 	@$(EMMAKE) make \
-		-C $(EM_PHP_DIR) clean
+		-C $(EM_PHP_DIR) distclean
 	@echo "The build area is clean"
 
 debug:

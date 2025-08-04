@@ -15,6 +15,30 @@ const demos = {
 
 const modal = new Modal();
 
+// Utility functions for UI performance
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+let scheduleRenderTabsScheduled = false;
+function scheduleRenderTabs() {
+    if (!scheduleRenderTabsScheduled) {
+        scheduleRenderTabsScheduled = true;
+        requestAnimationFrame(() => {
+            renderTabs();
+            scheduleRenderTabsScheduled = false;
+        });
+    }
+}
+
 // 2. Global state variables
 let currentOpenTab = null;
 let currentOpenFile = null;
@@ -72,7 +96,7 @@ function normalizePath(path) {
     return normal;
 }
 
-function renderTabs() {
+function scheduleRenderTabs() {
     tabBar.innerHTML = '';
     openTabs.forEach((tab, index) => {
         // Handle in open tabs
@@ -143,11 +167,14 @@ function switchTabView(tab) {
         }
     }
 
-    currentOpenTab  = tab;
-    editor.setValue(
-        currentOpenTab.content || '');
-    updateCurrentFileDisplay();
-    renderTabs();
+    currentOpenTab = tab;
+    
+    // Use a small delay to prevent rapid editor updates
+    setTimeout(() => {
+        editor.setValue(currentOpenTab.content || '');
+        updateCurrentFileDisplay();
+        scheduleRenderTabs();
+    }, 0);
 }
 
 function switchTab(path, name) {
@@ -169,7 +196,7 @@ function closeTabView(tab) {
         }
     }
 
-    renderTabs();
+    scheduleRenderTabs();
 }
 
 function closeTab(path, name) {
@@ -406,7 +433,7 @@ async function saveCurrentFile() {
     } finally {
         updateCurrentFileDisplay();
         refreshFileTree();
-        renderTabs();
+        scheduleRenderTabs();
     }
 }
 
@@ -590,7 +617,7 @@ function performRename(newName) {
                 updateCurrentFileDisplay();
             }
             refreshFileTree();
-            renderTabs();
+            scheduleRenderTabs();
         } else {
             updateStatus(`Failed to rename: ${currentContextPath}`, 'error');
         }
@@ -782,20 +809,12 @@ function switchPHPVersion() {
 
 function loadDemoName(selected) {
     let counter = 0;
-    while (openTabs.some(
-        tab => (tab.source == selected))) {
+    while (openTabs.some(tab => tab.source == selected && 
+           tab.name == `untitled-${selected}${counter ? `-${counter}` : ''}.php`)) {
         counter++;
     }
-
-    let name = 
-        `untitled-${selected}.php`;
-
-    if (!counter) {
-        return name;
-    }
-
-    return name.replace(
-        '.php', `-${counter}.php`);
+    
+    return `untitled-${selected}${counter ? `-${counter}` : ''}.php`;
 }
 
 function loadDemo() {
@@ -898,7 +917,7 @@ function initializeEditor() {
     } else {
         editor.setValue(demos.hello);
     }
-    renderTabs();
+    scheduleRenderTabs();
 }
 
 
@@ -1159,7 +1178,7 @@ function runCode() {
                     updateCurrentFileDisplay();
                     updateStatus(`Saved: ${currentOpenFile}`, 'success');
                     refreshFileTree();
-                    renderTabs();
+                    scheduleRenderTabs();
                 } else {
                     updateStatus(`Failed to save: ${currentOpenFile}`, 'error');
                     return;
