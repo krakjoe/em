@@ -503,7 +503,6 @@ button:disabled {
     cursor: pointer;
     white-space: nowrap;
     min-width: 100px;
-    max-width: 200px;
     user-select: none;
     flex-shrink: 0;
 }
