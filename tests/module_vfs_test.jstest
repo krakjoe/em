@@ -9,7 +9,6 @@ assert(!Module.vfs.unlink("test"),
     "unlink should return false second time")
 assert(Module.vfs.put("one", "42"));
 assert(Module.vfs.move("one", "two"));
-assertArray([], /* empty */
-    Module.vfs.get("one"));
+assert(!Module.vfs.get("one"));
 assertArray([52, 50], /* has content */
     Module.vfs.get("two"));

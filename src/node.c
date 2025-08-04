@@ -78,11 +78,7 @@ em_vfs_node_t* em_vfs_node_mkdir(em_vfs_node_t* parent, const char* name) {
     return dir;
 }
 
-void em_vfs_node_release(em_vfs_node_t* node) {
-    if (--node->refcount) {
-        return;
-    }
-
+void em_vfs_node_free(em_vfs_node_t* node) {
     if (node->parent) {
         em_vfs_node_release(node->parent);
     }
@@ -100,6 +96,20 @@ void em_vfs_node_release(em_vfs_node_t* node) {
     }
 
     pefree(node, 1);
+
+    node = NULL;
+}
+
+void em_vfs_node_release(em_vfs_node_t* node) {
+    if (!node) {
+        return;
+    }
+
+    if (--node->refcount) {
+        return;
+    }
+
+    em_vfs_node_free(node);
 }
 
 void em_vfs_node_dtor(zval *zv) {

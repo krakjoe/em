@@ -153,19 +153,28 @@ ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstract_t* 
     }
 
     if (want_write) {
-        // Write or read/write
         if (!node) {
-            node = em_vfs_node_mkfile(parent, vpath->filename);
+            // nothing to write
+            node = em_vfs_node_mkfile(
+                parent, vpath->filename);
         }
+
         if (!node) {
+            // nothing to do
             return FAILURE;
         }
+
         abstract->node = em_vfs_node_copy(node);
+
         // If also want_read and file exists, load content; else start empty
         if (want_read && node->data.file.size > 0) {
-            abstract->maximum = node->data.file.size > 8192 ? node->data.file.size : 8192;
+            abstract->maximum =
+                node->data.file.size > 8192 ?
+                    node->data.file.size : 8192;
             abstract->data = pecalloc(sizeof(char), abstract->maximum, 1);
-            memcpy(abstract->data, node->data.file.content, node->data.file.size);
+            memcpy(abstract->data,
+                   node->data.file.content,
+                   node->data.file.size);
             abstract->length = node->data.file.size;
         } else {
             abstract->maximum = 8192;
@@ -271,11 +280,11 @@ void em_vfs_release(em_vfs_abstract_t* abstract) {
         return;
     }
 
+    em_vfs_node_release(abstract->node);
+
     if (abstract->data) {
         pefree(abstract->data, 1);
     }
-
-    em_vfs_node_release(abstract->node);
 
     pefree(abstract, 1);
 }
@@ -505,10 +514,6 @@ static php_stream_wrapper em_vfs_wrapper = {
 };
 
 void em_vfs_startup(void) {
-#ifdef HAVE_EM_SQLITE_VFS
-    em_sqlite_vfs_register();
-#endif
-
     em_vfs = pecalloc(1, sizeof(em_vfs_node_t), 1);
     em_vfs->kind = EM_VFS_DIR;
     em_vfs->name = pestrdup("/", 1);
@@ -518,6 +523,9 @@ void em_vfs_startup(void) {
     zend_hash_init(
         &em_vfs->data.dir.children, 8,
         NULL, em_vfs_node_dtor, 1);
+#ifdef HAVE_EM_SQLITE_VFS
+    em_sqlite_vfs_register();
+#endif
 }
 
 void em_vfs_activate(void) {
@@ -534,15 +542,11 @@ void em_vfs_deactivate(void) {
 }
 
 void em_vfs_shutdown(void) {
-    if (!em_vfs) {
-        return;
-    }
-
-    em_vfs_node_release(em_vfs);
-
 #ifdef HAVE_EM_SQLITE_VFS
     em_sqlite_vfs_unregister();
 #endif
+
+    em_vfs_node_release(em_vfs);
 }
 
 bool EMSCRIPTEN_KEEPALIVE
@@ -625,6 +629,10 @@ ssize_t EMSCRIPTEN_KEEPALIVE
             vpath->filename, strlen(vpath->filename));
     em_vfs_path_release(vpath);
 
+    if (!node) {
+        return -1;
+    }
+
     if (node->kind == EM_VFS_DIR) {
         return -1;
     }
@@ -674,13 +682,13 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_unlink(const char* path, bool directories) {
         &parent->data.dir.children,
         vpath->filename, strlen(vpath->filename));
 
-    em_vfs_path_release(vpath);
-
     if (result == SUCCESS) {
         php_clear_stat_cache(0,
             vpath->filename,
             strlen(vpath->filename));
     }
+
+    em_vfs_path_release(vpath);
 
     return (result == SUCCESS);
 }

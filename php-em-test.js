@@ -143,6 +143,10 @@ class EmTestRunner {
     findTestFiles(dir) {
         const files = [];
         
+        if (!fs.statSync(dir).isDirectory()) {
+            return [dir];
+        }
+
         const scan = (currentDir) => {
             if (!fs.existsSync(currentDir)) {
                 return;
