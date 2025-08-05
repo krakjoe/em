@@ -45,6 +45,8 @@ const contextMenu = document.getElementById('contextMenu');
 const statusBar = document.getElementById('statusBar');
 const output = document.getElementById('output');
 const outputStatus = document.getElementById('outputStatus');
+const previewButton = document.getElementById('previewButton');
+const editorPanel = document.getElementById('editorPanel') || document.querySelector('.editor-panel') || document.getElementById('editor')?.parentElement;
 
 function resetVFS() {
     if (!isReady || !Module || !Module.vfs) {
@@ -79,21 +81,20 @@ function normalizePath(path) {
 function renderTabs() {
     const tabContainer = document.querySelector('.tab-container');
     requestAnimationFrame(() => {
-        // Store current scroll position
         const currentScroll = tabContainer.scrollLeft;
-
-        // Clear existing tabs
         tabContainer.innerHTML = '';
-
-        // Create and append tabs
         openTabs.forEach((tab, index) => {
             tab.index = index;
             tab.handle = document.createElement('div');
             tab.handle.className = 'tab' + (currentOpenTab == tab ? ' active' : '');
-            tab.handle.textContent = tab.name;
+            // Show a browser icon for browser tabs
+            if (tab.type === 'browser') {
+                tab.handle.innerHTML = '🖥️ ' + tab.name;
+            } else {
+                tab.handle.textContent = tab.name;
+            }
             tab.handle.onclick = () => switchTabView(tab);
-
-            // Close button on handle
+            // Close button
             tab.close = document.createElement('span');
             tab.close.textContent = ' ×';
             tab.close.className = 'tab-close';
@@ -104,16 +105,12 @@ function renderTabs() {
             tab.handle.appendChild(tab.close);
             tabContainer.appendChild(tab.handle);
         });
-
-        // After all tabs are rendered, ensure active tab is visible if there is one
         const activeTab = tabContainer.querySelector('.tab.active');
         if (activeTab) {
             const containerWidth = tabContainer.clientWidth;
             const tabLeft = activeTab.offsetLeft;
             const tabWidth = activeTab.offsetWidth;
             const rightEdge = currentScroll + containerWidth;
-
-            // If active tab is outside the current view, scroll to make it visible
             if (tabLeft < currentScroll || (tabLeft + tabWidth) > rightEdge) {
                 const targetScroll = Math.max(0, tabLeft - (containerWidth - tabWidth) / 2);
                 tabContainer.scrollTo({
@@ -121,16 +118,13 @@ function renderTabs() {
                     behavior: 'smooth'
                 });
             } else {
-                // Restore the scroll position if no scrolling needed
                 tabContainer.scrollLeft = currentScroll;
             }
         }
-
-        // Force layout recalculation and update nav buttons
         tabContainer.offsetWidth;
         updateNavButtons();
         updateCurrentFileDisplay();
-    })
+    });
 }
 
 function selectTab(path, name) {
@@ -151,57 +145,86 @@ function selectTab(path, name) {
 }
 
 function switchTabView(tab) {
-    if ((currentOpenTab && tab) &&
-        (currentOpenTab !== tab)) {
-        const editorValue =
-            editor.getValue();
-        currentOpenTab.content = editorValue;
-
-        if (currentOpenTab.path &&
-            currentOpenTab.vfsContent !== undefined) {
-            // For files in VFS, compare with stored VFS content
-            currentOpenTab.unsaved =
-                (editorValue !== currentOpenTab.vfsContent);
-        } else if (!currentOpenTab.path) {
-            // For demo sourced content, check against original code
-            currentOpenTab.unsaved =
-                (editorValue !== demos[currentOpenTab.source]);
+    if ((currentOpenTab && tab) && (currentOpenTab !== tab)) {
+        if (currentOpenTab.type !== 'browser') {
+            const editorValue = editor.getValue();
+            currentOpenTab.content = editorValue;
+            if (currentOpenTab.path && currentOpenTab.vfsContent !== undefined) {
+                currentOpenTab.unsaved = (editorValue !== currentOpenTab.vfsContent);
+            } else if (!currentOpenTab.path) {
+                currentOpenTab.unsaved = (editorValue !== demos[currentOpenTab.source]);
+            }
         }
     }
-
-    // !This is the only place that should ever set currentOpenTab!
     currentOpenTab = tab;
-
-    // Set appropriate mode based on file extension
-    const currentOpenExtension = currentOpenTab.path ?
-        currentOpenTab.path.split('.').pop().toLowerCase() :
-        currentOpenTab.name.split('.').pop().toLowerCase();
-    let currentOpenMode = 'application/x-httpd-php';
-    switch(currentOpenExtension) {
-        case 'md':
-        case 'markdown':
-            currentOpenMode = 'markdown';
-            break;
-        case 'js':
-            currentOpenMode = 'javascript';
-            break;
-        case 'css':
-            currentOpenMode = 'css';
-            break;
-        case 'html':
-        case 'htm':
-            currentOpenMode = 'htmlmixed';
-            break;
-        case 'json':
-            currentOpenMode = { 
-                name: 'javascript', json: true
-            };
-            break;
+    // If browser tab, render browser UI, else show editor
+    if (tab.type === 'browser') {
+        if (editor && editor.getWrapperElement()) {
+            editor.getWrapperElement().style.display = 'none';
+        }
+        // Remove any existing browser container
+        let browserContainer = editorPanel.querySelector('.browser-tab-container');
+        if (browserContainer) {
+            browserContainer.remove();
+        }
+        // Create a container for the browser tab UI
+        browserContainer = document.createElement('div');
+        browserContainer.className = 'browser-tab-container';
+        editorPanel.appendChild(browserContainer);
+        window.renderBrowserTab(tab, browserContainer);
+    } else {
+        // Remove browser UI if present
+        let browserContainer = editorPanel.querySelector('.browser-tab-container');
+        if (browserContainer) {
+            browserContainer.remove();
+        }
+        if (editor && editor.getWrapperElement()) {
+            // Ensure the editor is attached and visible
+            if (!editorPanel.contains(editor.getWrapperElement())) {
+                editorPanel.appendChild(editor.getWrapperElement());
+            }
+            editor.getWrapperElement().style.display = '';
+        }
+        // Set editor mode and value
+        const currentOpenExtension = currentOpenTab.path ?
+            currentOpenTab.path.split('.').pop().toLowerCase() :
+            currentOpenTab.name.split('.').pop().toLowerCase();
+        let currentOpenMode = 'application/x-httpd-php';
+        switch(currentOpenExtension) {
+            case 'md':
+            case 'markdown':
+                currentOpenMode = 'markdown';
+                break;
+            case 'js':
+                currentOpenMode = 'javascript';
+                break;
+            case 'css':
+                currentOpenMode = 'css';
+                break;
+            case 'html':
+            case 'htm':
+                currentOpenMode = 'htmlmixed';
+                break;
+            case 'json':
+                currentOpenMode = { name: 'javascript', json: true };
+                break;
+        }
+        editor.setOption('mode', currentOpenMode);
+        editor.setValue(currentOpenTab.content || '');
     }
-    editor.setOption('mode', currentOpenMode);
-    editor.setValue(
-        currentOpenTab.content || '');
     renderTabs();
+}
+// Add Preview button logic to open browser tab
+if (previewButton) {
+    previewButton.addEventListener('click', function() {
+        // Only open one browser tab at a time
+        let browserTab = openTabs.find(tab => tab.type === 'browser');
+        if (!browserTab) {
+            browserTab = window.createBrowserTab();
+            openTabs.push(browserTab);
+        }
+        switchTabView(browserTab);
+    });
 }
 
 function switchTab(path, name) {
@@ -1346,3 +1369,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeGithubButton();
     loadPHPRuntime();
 });
+
+window.openTabs = openTabs;
+window.switchTabView = switchTabView;

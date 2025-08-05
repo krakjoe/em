@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>em</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="browser.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
 </head>
@@ -21,10 +22,11 @@
                 <option value="8.4">PHP 8.4</option>
                 <option value="master">PHP master</option>
             </select>
-            
+
             <button id="runButton">Run Code</button>
             <button id="clearOutput">Clear Output</button>
             <button id="resetVFS">Reset VFS</button>
+            <button id="previewButton">Open Browser</button>
             
             <select id="demoSelect" class="demo-list">
                 <option value="">Load Demo...</option>
@@ -73,6 +75,7 @@
                 <div class="tab-container"></div>
                 <button class="tab-nav-button right">▶</button>
             </div>
+
             <div class="editor-panel">
                 <div class="editor-header">
                     <span id="currentFile">PHP Code Editor</span>
@@ -81,7 +84,26 @@
                 <textarea id="codeEditor"></textarea>
             </div>
 
+            <template id="browserTabTemplate">
+                <div class="browser-tab">
+                    <div class="browser-toolbar">
+                        <button class="browser-back" title="Back">⟨</button>
+                        <button class="browser-forward" title="Forward">⟩</button>
+                        <button class="browser-refresh" title="Refresh">⟳</button>
+                        <input class="browser-url" type="text" value="/" spellcheck="false" autocomplete="off" />
+                        <button class="browser-go" title="Go">Go</button>
+                        <button class="browser-menu" title="Menu">&#x22ee;</button>
+                        <div class="browser-context-menu">
+                            <div class="browser-context-menu-item" data-action="refresh">Refresh</div>
+                            <div class="browser-context-menu-item" data-action="view-source">View Source</div>
+                        </div>
+                    </div>
+                    <div class="browser-content"></div>
+                </div>
+            </template>
+
             <div class="output-panel">
+                <div class="output-resizer"></div>
                 <div class="output-header">
                     <span>Output</span>
                     <span id="outputStatus"></span>
@@ -136,5 +158,7 @@
     <script src="zip.js"></script>
     <script src="modal.js"></script>
     <script src="main.js"></script>
+    <script src="output-resizer.js"></script>
+    <script src="browser.js"></script>
 </body>
 </html>

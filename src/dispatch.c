@@ -47,6 +47,7 @@ em_dispatch_handler_t em_dispatch_setup(sapi_request_info* info, const char* met
 
     info->query_string = strstr(info->request_uri, "?");
 
+    /* first we translate request uri into query string and path */
     if (info->query_string) {
         size_t path_translated_length =
             info->query_string - info->request_uri;
@@ -61,8 +62,39 @@ em_dispatch_handler_t em_dispatch_setup(sapi_request_info* info, const char* met
             info->request_uri,
             path_translated_length);
         info->path_translated[path_translated_length] = '\0';
+        info->query_string++;
     } else {
         info->path_translated = strdup(info->request_uri);
+    }
+
+    const char* address = em_vfs_get_address(info->path_translated);
+
+    if (!address) {
+        /* then we need to use that path to search for reasonable indexes */
+        char search[MAXPATHLEN];
+        const char* indexes[] = {
+            "index.php",
+            "index.html",
+            "index.htm",
+            NULL
+        };
+        const char** index = indexes;
+        do {
+            snprintf(search,
+                MAXPATHLEN,
+                    "%s%s%s",
+                    info->path_translated,
+                    info->path_translated[
+                        strlen(info->path_translated) - 1
+                    ] != '/' ?
+                        "/" : "",
+                    (*index));
+            if (em_vfs_get_address(search)) {
+                info->path_translated = strdup(search);
+                break;
+            }
+            index++;
+        } while ((*index));
     }
 
     return em_dispatch_select(mime, info);
