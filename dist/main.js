@@ -468,11 +468,14 @@ async function saveCurrentFile() {
     }
 
     try {
-        if (Module.vfs.put(currentOpenTab.path,
-                           currentOpenTab.vfsContent = editor.getValue())) {
+        // Always encode as UTF-8 Uint8Array
+        const value = editor.getValue();
+        const bytes = new TextEncoder().encode(value);
+        if (Module.vfs.put(currentOpenTab.path, bytes)) {
+            currentOpenTab.unsaved    = false;
+            currentOpenTab.vfsContent = value;
             updateStatus(
                 `Saved: ${currentOpenTab.path}`, 'success');
-            currentOpenTab.unsaved = false;
         } else {
             console.error(`Failed to save: ${currentOpenTab.path}`);
             updateStatus(`Failed to save: ${currentOpenTab.path}`, 'error');
@@ -1195,13 +1198,20 @@ async function loadGithubRepo(repoInput) {
             updateProgressBar(`Fetching: ${entry.path}`, i, total);
             // Use GitHub API to fetch file content (avoid CORS)
             let blob = await githubApiRequest(`/repos/${repo}/git/blobs/${entry.sha}`);
-            let content = '';
+            let contentBytes;
             if (blob.encoding === 'base64') {
-                content = atob(blob.content.replace(/\n/g, ''));
+                // Decode base64 to Uint8Array
+                const binaryStr = atob(blob.content.replace(/\n/g, ''));
+                contentBytes = new Uint8Array(binaryStr.length);
+                for (let j = 0; j < binaryStr.length; j++) {
+                    contentBytes[j] = binaryStr.charCodeAt(j);
+                }
             } else {
-                content = blob.content;
+                // Fallback: treat as UTF-8 string
+                contentBytes = new TextEncoder().encode(blob.content);
+                
             }
-            Module.vfs.put('/' + entry.path, content);
+            Module.vfs.put('/' + entry.path, contentBytes);
             fileCount++;
         }
         refreshFileTree();
@@ -1236,7 +1246,9 @@ async function loadGithubGist(gistInput) {
             const [fname, file] = files[i];
             updateProgressBar(`Fetching: ${fname}`, i, total);
             if (file && file.content !== undefined) {
-                Module.vfs.put('/' + fname, file.content);
+                // Always encode as UTF-8 bytes for VFS
+                const contentBytes = new TextEncoder().encode(file.content);
+                Module.vfs.put('/' + fname, contentBytes);
                 fileCount++;
             }
         }

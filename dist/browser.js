@@ -135,7 +135,6 @@ window.renderBrowserTab = function(tab, container) {
         fwdBtn.disabled = tab.historyIndex >= tab.history.length - 1;
     }
 
-    // --- IFRAME BROWSER RENDERING ---
     // Create the iframe for browser content
     const iframe = document.createElement('iframe');
     iframe.className = 'browser-iframe';
@@ -152,11 +151,14 @@ window.renderBrowserTab = function(tab, container) {
         iframe.onload = function() {
             const doc = iframe.contentDocument;
 
-            doc.open();
-            doc.write(html);
-            doc.close();
-            // Instrument links and forms
-            instrumentIframe(doc);
+            try {
+                doc.open();
+                doc.write(html);
+                doc.close();
+            } catch (error) { } finally {
+                // Instrument links and forms
+                instrumentIframe(doc);
+            }
         };
     }
 
@@ -164,7 +166,18 @@ window.renderBrowserTab = function(tab, container) {
     function instrumentIframe(doc) {
         // Helper: is a URL relative/local (should be rerouted)?
         function isRelativeUrl(url) {
-            return url && !/^(?:[a-z]+:)?\/\//i.test(url) && !url.startsWith('data:') && !url.startsWith('mailto:');
+            // Intercept if not absolute, or if same-origin
+            if (!url) return false;
+            if (url.startsWith('data:') || url.startsWith('mailto:')) return false;
+            // Absolute URLs
+            if (/^(?:[a-z]+:)?\/\//i.test(url)) {
+                try {
+                    const u = new URL(url, window.location.origin);
+                    if (u.origin === window.location.origin) return true;
+                } catch {}
+                return false;
+            }
+            return true;
         }
         // Intercept all <a> clicks
         Array.from(doc.querySelectorAll('a[href]')).forEach(a => {
@@ -182,9 +195,16 @@ window.renderBrowserTab = function(tab, container) {
             const href = link.getAttribute('href');
             if (isRelativeUrl(href) && typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
                 try {
-                    const css = Module.dispatch('GET', href, 'text/css', null);
+                    let raw = Module.dispatch('GET', href, 'text/css', null);
+                    let body = raw;
+                    if (typeof raw === 'string') {
+                        const split = raw.split(/\r?\n\r?\n/);
+                        if (split.length > 1) {
+                            body = split.slice(1).join('\n\n');
+                        }
+                    }
                     const style = doc.createElement('style');
-                    style.textContent = css;
+                    style.textContent = body;
                     link.parentNode.replaceChild(style, link);
                 } catch (err) {
                     // If error, remove the link and show error in console
@@ -199,9 +219,16 @@ window.renderBrowserTab = function(tab, container) {
             const src = script.getAttribute('src');
             if (isRelativeUrl(src) && typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
                 try {
-                    const js = Module.dispatch('GET', src, 'application/javascript', null);
+                    let raw = Module.dispatch('GET', src, 'application/javascript', null);
+                    let body = raw;
+                    if (typeof raw === 'string') {
+                        const split = raw.split(/\r?\n\r?\n/);
+                        if (split.length > 1) {
+                            body = split.slice(1).join('\n\n');
+                        }
+                    }
                     const inlineScript = doc.createElement('script');
-                    inlineScript.textContent = js;
+                    inlineScript.textContent = body;
                     script.parentNode.replaceChild(inlineScript, script);
                 } catch (err) {
                     script.parentNode.removeChild(script);
@@ -214,26 +241,60 @@ window.renderBrowserTab = function(tab, container) {
         // Helper for src/data attributes
         function rerouteElementSrc(el, attr, mime) {
             const url = el.getAttribute(attr);
+            // Accept an optional fourth argument: dataUriMime
+            const dataUriMimeArg = arguments.length > 3 ? arguments[3] : undefined;
             if (isRelativeUrl(url) && typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
                 try {
-                    const data = Module.dispatch('GET', url, mime, null);
-                    // For images/media, convert to data URL if possible
-                    if (mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/')) {
-                        // Try to base64 encode if not already
-                        // Assume Module.dispatch returns raw binary or base64 string
-                        // For now, just set src to data: URI
-                        el.setAttribute(attr, `data:${mime};base64,${data}`);
+                    let raw = Module.dispatch('GET', url, mime, null);
+                    let headers = {}, body = raw;
+                    if (typeof raw === 'string') {
+                        const split = raw.split(/\r?\n\r?\n/);
+                        if (split.length > 1) {
+                            // Parse headers
+                            const headerLines = split[0].split(/\r?\n/);
+                            headerLines.forEach(line => {
+                                const idx = line.indexOf(':');
+                                if (idx > 0) {
+                                    const key = line.slice(0, idx).trim().toLowerCase();
+                                    const value = line.slice(idx + 1).trim();
+                                    headers[key] = value;
+                                }
+                            });
+                            body = split.slice(1).join('\n\n');
+                        }
+                    }
+                    // If mime is 'data/base64', treat body as base64 and set correct data URI MIME type
+                    if (mime === 'data/base64') {
+                        let base64 = body.replace(/\s+/g, '');
+                        // Use provided dataUriMime if given, else guess
+                        let dataUriMime = dataUriMimeArg;
+                        if (!dataUriMime) {
+                            dataUriMime = el.getAttribute('data-datauri-mime') || 'application/octet-stream';
+                            if (el.tagName === 'IMG') {
+                                const src = url;
+                                if (src.match(/\.jpe?g$/i)) dataUriMime = 'image/jpeg';
+                                else if (src.match(/\.png$/i)) dataUriMime = 'image/png';
+                                else if (src.match(/\.gif$/i)) dataUriMime = 'image/gif';
+                                else if (src.match(/\.svg$/i)) dataUriMime = 'image/svg+xml';
+                                else if (src.match(/\.webp$/i)) dataUriMime = 'image/webp';
+                            } else if (el.tagName === 'VIDEO') {
+                                dataUriMime = 'video/mp4';
+                            } else if (el.tagName === 'AUDIO') {
+                                dataUriMime = 'audio/mpeg';
+                            }
+                        }
+                        el.setAttribute(attr, `data:${dataUriMime};base64,${base64}`);
                     } else {
                         // For iframe/object/embed, just set srcdoc/data if possible
                         if (el.tagName === 'IFRAME') {
                             el.removeAttribute(attr);
-                            el.setAttribute('srcdoc', data);
+                            el.setAttribute('srcdoc', body);
                         } else if (el.tagName === 'OBJECT') {
                             el.removeAttribute(attr);
-                            el.innerHTML = data;
+                            el.innerHTML = body;
                         } else {
-                            // fallback: set src to data URI
-                            el.setAttribute(attr, `data:${mime};base64,${data}`);
+                            // fallback: set src to data URI (text, not base64)
+                            el.setAttribute(attr, `data:${mime},${encodeURIComponent(body)}`);
                         }
                     }
                 } catch (err) {
@@ -243,12 +304,20 @@ window.renderBrowserTab = function(tab, container) {
             }
         }
 
-        // Images
-        Array.from(doc.querySelectorAll('img[src]')).forEach(img => rerouteElementSrc(img, 'src', 'image/png'));
+        // Images (request as base64, but use correct data URI type)
+        Array.from(doc.querySelectorAll('img[src]')).forEach(img => {
+            const src = img.getAttribute('src') || '';
+            let dataUriMime = 'image/png';
+            if (src.match(/\.jpe?g$/i)) dataUriMime = 'image/jpeg';
+            else if (src.match(/\.gif$/i)) dataUriMime = 'image/gif';
+            else if (src.match(/\.svg$/i)) dataUriMime = 'image/svg+xml';
+            else if (src.match(/\.webp$/i)) dataUriMime = 'image/webp';
+            rerouteElementSrc(img, 'src', 'data/base64', dataUriMime);
+        });
         // Video
-        Array.from(doc.querySelectorAll('video[src]')).forEach(video => rerouteElementSrc(video, 'src', 'video/mp4'));
+        Array.from(doc.querySelectorAll('video[src]')).forEach(video => rerouteElementSrc(video, 'src', 'data/base64', 'video/mp4'));
         // Audio
-        Array.from(doc.querySelectorAll('audio[src]')).forEach(audio => rerouteElementSrc(audio, 'src', 'audio/mpeg'));
+        Array.from(doc.querySelectorAll('audio[src]')).forEach(audio => rerouteElementSrc(audio, 'src', 'data/base64', 'audio/mpeg'));
         // Source (for <picture>, <video>, <audio>)
         Array.from(doc.querySelectorAll('source[src]')).forEach(source => {
             // Try to guess mime from type attribute or parent
@@ -296,7 +365,7 @@ window.renderBrowserTab = function(tab, container) {
 
     // Navigation logic
     function navigate(toUrl, addToHistory = true, postData = null) {
-        urlInput.value = toUrl;
+        urlInput.value = toUrl.startsWith("/") ? toUrl : "/" + toUrl;
         iframe.srcdoc = '<em>Loading...</em>';
         if (typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
             try {

@@ -21,6 +21,25 @@
 #include "buffer.h"
 #include "api.h"
 
+#include <ext/standard/base64.h>
+
+static zend_always_inline const char* em_dispatch_mime(sapi_request_info* info, const char* fallback) {
+    char* extension = strrchr(info->path_translated, '.');
+
+    if (!extension) {
+        return fallback;
+    }
+
+    if (strcmp(extension, ".css") == SUCCESS) {
+        return "text/css; charset=UTF-8";
+    } else if (strcmp(extension, ".html") == SUCCESS ||
+               strcmp(extension, ".htm")  == SUCCESS) {
+        return "text/html; charset=UTF-8";
+    }
+
+    return fallback;
+}
+
 typedef struct _em_dispatch_t {
     struct {
         const char* type;
@@ -28,6 +47,21 @@ typedef struct _em_dispatch_t {
     } mime;
     em_dispatch_handler_t handler;
 } em_dispatch_t;
+
+void em_dispatch_header(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    sapi_header_line header;
+
+    header.line_len = vspprintf(
+        (char **) &(header.line), 0,
+        format, args);
+    sapi_header_op(
+        SAPI_HEADER_REPLACE, (void*) &header);
+    efree((void*)header.line);
+
+    va_end(args);
+}
 
 static em_dispatch_handler_t em_dispatch_select(const char* mime, sapi_request_info* info);
 
@@ -37,7 +71,15 @@ em_dispatch_handler_t em_dispatch_setup(sapi_request_info* info, const char* met
     memset(info, 0, sizeof(*info));
 
     info->request_method = method;
-    info->request_uri    = strdup(uri);
+
+    if (!uri || uri[0] != '/') {
+        asprintf(
+            &info->request_uri,
+            "/%s", uri ? uri : "");
+    } else {
+        info->request_uri = strdup(uri);
+    }
+
     info->content_type   = mime;
     info->content_length = length;
 
@@ -128,20 +170,19 @@ void em_dispatch_cleanup(sapi_request_info* info) {
 }
 
 void em_dispatch_error(sapi_request_info* info) {
-    em_dispatch_response(400,
-        "Not Found", "text/plain");
-    /* send more content maybe ... */
+    em_dispatch_header("Status: 400 Not Found");
+    em_dispatch_header("Content-Type: text/plain");
 }
 
 void em_dispatch_exception(sapi_request_info* info) {
-    em_dispatch_response(500,
-        "Internal Server Error", "text/plain");
+    em_dispatch_header("Status: 500 Internal Server Error");
+    em_dispatch_header("Content-Type: text/plain");
     /* send more content maybe ... */
 }
 
 void em_dispatch_api(sapi_request_info* info) {
-    em_dispatch_response(200,
-        "OK", "text/plain");
+    em_dispatch_header("Status: 200 OK");
+    em_dispatch_header("Content-Type: text/plain");
 }
 
 void em_dispatch_file(sapi_request_info* info) {
@@ -162,12 +203,12 @@ void em_dispatch_file(sapi_request_info* info) {
         return;
     }
 
-    em_dispatch_response(200, "OK",
-        "application/octet-stream");
-
-    /** TODO(krakjoe) content-type, content-length, etc */
+    em_dispatch_header("Status: 200 OK");
+    em_dispatch_header("Content-Type: %s",
+        em_dispatch_mime(info,
+            "application/octet-stream"));
+    em_dispatch_header("Content-Length: %zu", length);
     sapi_send_headers();
-
     em_buffer_response(address, length);
 }
 
@@ -205,9 +246,39 @@ void em_dispatch_script(sapi_request_info* info) {
         return;
     }
 
-    em_dispatch_response(200, "OK",
-        "text/plain");
+    em_dispatch_header("Status: 200 OK");
     em_execute(ops);
+}
+
+void em_dispatch_base64(sapi_request_info* info) {
+    /* service path */
+    const unsigned char* address =
+        em_vfs_get_address(info->path_translated);
+
+    if (!address) {
+        em_dispatch_error(info);
+        return;
+    }
+
+    ssize_t length =
+        em_vfs_get_length(info->path_translated);
+
+    if (length < 0) {
+        em_dispatch_exception(info);
+        return;
+    }
+
+    zend_string* encoded =
+        php_base64_encode(address, length);
+
+    em_dispatch_header("Status: 200 OK");
+    em_dispatch_header("Content-Type: data/base64");
+    em_dispatch_header("Content-Length: %zu", ZSTR_LEN(encoded));
+    sapi_send_headers();
+
+    em_buffer_response(
+        ZSTR_VAL(encoded), ZSTR_LEN(encoded));
+    zend_string_release(encoded);
 }
 
 em_dispatch_t __em_dispatch_table__[] = {
@@ -216,51 +287,45 @@ em_dispatch_t __em_dispatch_table__[] = {
     { ZEND_STRL("application/x-em-script"),    em_dispatch_script }, 
     { ZEND_STRL("application/x-em-error"),     em_dispatch_error },
     { ZEND_STRL("application/x-em-exception"), em_dispatch_exception },
+
+    { ZEND_STRL("data/base64"),                em_dispatch_base64 },
     { { NULL, 0 }, NULL },
 };
 
 static em_dispatch_handler_t em_dispatch_select(const char* mime, sapi_request_info* info) {
-    em_dispatch_t* dispatch = __em_dispatch_table__;
-
-    /* mime based dispatch */
-    if (mime) {
+    if (mime != NULL) {
+        em_dispatch_t* dispatch = __em_dispatch_table__;
         size_t selector = strlen(mime);
         do {
-            if ((selector == dispatch->mime.length) &&
-                (memcmp(mime,
-                    dispatch->mime.type, selector) == SUCCESS)) {
+            if (strncmp(mime,
+                    dispatch->mime.type,
+                    dispatch->mime.length) == 0) {
                 return dispatch->handler;
             }
             dispatch++;
         } while (dispatch->handler);
     }
 
-    const char* address =
-        em_vfs_get_address(info->path_translated);
+    const char* address = em_vfs_get_address(info->path_translated);
 
     /* file doesn't exist, handle as error */
     if (!address) {
-        return em_dispatch_select(
-            "application/x-em-error", info);
+        return em_dispatch_error;
     }
 
     /* file extension based dispatch */
-    const char* extension =
-        strrchr(info->path_translated, '.');
+    const char* extension = strrchr(info->path_translated, '.');
 
     /* if no extension, can't be php */
     if (!extension) {
-        return em_dispatch_select(
-            "application/x-em-file", info);
+        return em_dispatch_file;
     }
 
     /* dispatch to script handler */
     if (strcmp(extension, ".php") == SUCCESS) {
-        return em_dispatch_select(
-            "application/x-em-script", info);
+        return em_dispatch_script;
     }
 
     /* fallthrough to file */
-    return em_dispatch_select(
-        "application/x-em-file", info);
+    return em_dispatch_file;
 }

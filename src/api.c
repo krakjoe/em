@@ -332,12 +332,11 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
             mime, request, length);
 
     if (em_activate(true) != SUCCESS) {
+        em_dispatch_cleanup(info);
         return (uintptr_t) -1;
     }
 
     em_dispatch_request(info);
-
-__em_run_request_leave:
     em_dispatch_cleanup(info);
     em_deactivate();
 
@@ -480,13 +479,23 @@ static int em_sapi_headers(sapi_headers_struct* all) {
 
         return SAPI_HEADER_SENT_SUCCESSFULLY;
     }
+
     zend_llist_position position;
     sapi_header_struct* status =
         em_sapi_headers_status(all, &position);
 
     /* send status line first */
     if (status) {
-        em_buffer_response(status->header, status->header_len);
+        const char* http =
+            strchr(status->header, ':');
+
+        if (http) {
+            em_buffer_response(ZEND_STRL("HTTP/1.0"));
+            em_buffer_response(http + 1, strlen(http + 1));
+        } else {
+            em_buffer_response(status->header, status->header_len);
+        }
+
         em_buffer_response(ZEND_STRL("\r\n"));
     } else {
         char buffer[4096];
@@ -521,6 +530,18 @@ __em_sapi_headers_leave:
 static void em_sapi_env(zval *vars)
 {
 	php_import_environment_variables(vars);
+
+    if (SG(request_info).request_method) {
+        php_register_variable("REQUEST_METHOD",
+            (char*)SG(request_info).request_method, vars);
+    }
+
+    if (SG(request_info).path_translated) {
+        php_register_variable("SCRIPT_FILENAME",
+            (char*)SG(request_info).path_translated, vars);
+        php_register_variable("PHP_SELF",
+            (char*)SG(request_info).path_translated, vars);
+    }
 }
 
 sapi_module_struct em_sapi_module = {

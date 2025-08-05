@@ -24,8 +24,9 @@ const ZipManager = {
             for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
                 if (!zipEntry.dir) {
                     try {
-                        const content = await zipEntry.async('string');
-                        
+                        // Always get file as Uint8Array for binary safety
+                        const content = await zipEntry.async('uint8array');
+
                         // Create directory if needed
                         const pathParts = relativePath.split('/');
                         if (pathParts.length > 1) {
@@ -39,8 +40,8 @@ const ZipManager = {
                                 }
                             }
                         }
-                        
-                        // Write file to VFS
+
+                        // Write file to VFS (must be Uint8Array)
                         const success = Module.vfs.put(relativePath, content);
                         if (success) {
                             importedCount++;
@@ -96,12 +97,11 @@ const ZipManager = {
                         // It's a file - get content and add to ZIP
                         const content = Module.vfs.get(fullPath);
                         if (content !== false) {
-                            // Convert Uint8Array to string
-                            const decoder = new TextDecoder('utf-8');
-                            const text = decoder.decode(content);
-                            zip.file(fullPath, text);
+                            // Add as Uint8Array for binary safety
+                            zip.file(fullPath, content);
                             exportedCount++;
                         }
+// NOTE: For GitHub import, ensure you fetch and pass Uint8Array/binary data to vfs.put, never JS strings.
                     } else if (file.kind === Module.vfs.EM_VFS_DIR && file.children) {
                         // It's a directory with children - recurse
                         addFilesToZip(file.children, fullPath + '/');

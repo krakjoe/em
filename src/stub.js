@@ -435,12 +435,20 @@ Module.vfs = {
      * @returns
      */
     put: function(path, contents) {
-        return Module.ccall('em_vfs_put', 'bool', [
+        if (!(contents instanceof Uint8Array)) {
+            throw new TypeError("contents must be a Uint8Array");
+        }
+        let length = contents.length;
+        let address = Module._malloc(length);
+        Module.HEAPU8.set(contents, address);
+        let result = Module.ccall('em_vfs_put', 'bool', [
             'string',
-            'string', 'number'], [
+            'number', 'number'], [
             path,
-            contents, Module.lengthBytesUTF8(contents)
+            address, length
         ]);
+        Module._free(address);
+        return result;
     },
     /**
      * Shall retrieve file contents from the filesystem

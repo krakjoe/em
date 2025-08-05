@@ -55,7 +55,8 @@ EM_EXPORT_FUNCTIONS = [          \
 	"_em_vfs_iterator_modified", \
 	"_em_vfs_iterator_reset",    \
 	"_em_vfs_iterator_next",     \
-	"_em_vfs_iterator_free"      \
+	"_em_vfs_iterator_free",     \
+	"_malloc", "_free"           \
 ]
 define EM_EXPORT_ADD_FUNCTION
 $(eval EM_EXPORT := $(strip $(1)))

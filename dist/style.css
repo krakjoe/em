@@ -236,7 +236,7 @@ button:disabled {
 }
 
 .output-resizer {
-    height: 6px;
+    height: 9px;
     background: #222;
     cursor: ns-resize;
     width: 100%;
@@ -244,6 +244,7 @@ button:disabled {
     top: -3px;
     left: 0;
     z-index: 10;
+    padding-bottom: 6px;
     border-top: 1px solid #444;
     border-bottom: 1px solid #111;
     transition: background 0.2s;
