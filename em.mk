@@ -112,6 +112,15 @@ $(foreach EM_RECIPE_SEARCH,$(EM_RECIPE_PATHS), \
 include $(EM_RECIPE_PATHS)
 endif
 ########################################################################
+# Special case for opcache, we need stubs
+########################################################################
+ifeq ($(call EM_PHP_VERSION_GE,80500),true)
+ifeq ($(EM_OPCACHE_ENABLED),)
+EM_RECIPES += opcache
+include $(EM_RECIPE_IN)/opcache.mk
+endif
+endif
+########################################################################
 .PHONY: all debug 
 .PHONY: clean clean-objects clean-bin clean-recipes clean-php clean-deps
 .PHONY: strip install 
@@ -162,7 +171,6 @@ $(EM_PHP_DIR)/config.status: $(EM_PHP_DIR)/config.deps $(EM_RECIPE_TARGETS)
 			--disable-cli \
 			--disable-phpdbg \
 			--enable-embed=static \
-			--disable-opcache-jit \
 			--disable-fiber-asm \
 			--without-pcre-jit \
 			$(EM_RECIPE_CONFIGURE)

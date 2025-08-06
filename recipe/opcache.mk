@@ -19,15 +19,20 @@
 # working on virtual file systems and streams.
 # The philosophy of em prohibits us from patching this source code,
 # so there is nothing we are able to do about this ... for now ...
-#
-# It's possible to convince dmitry to add em to allowed sapis, but we
-# need to work with him on that to make sure we actually can support
-# opcache without compromising stability of em.   
 ########################################################################
 # Version guard:
 #  Pre 8.4, opcache would run AC_IF_ELSE during configure, we can't stop
 #  that happening gracefully (by manipulating ac cache vars)
 #  as a result it would break the build if enabled ...
+#
+#  Post 8.5 opcache is a static requirement of the build, we cannot
+#  disable or remove it.
+#
+#  It's probably possible to provide a shim for mmap/munmap/mprotect
+#  so that opcache will function, however, it's not so simple to
+#  implement the behavior of munmap, and does not really look worth it.
+#
+#  Opcache is accomodated at build time and disabled at runtime for now
 ########################################################################
 ifeq ($(call EM_PHP_VERSION_GE,80400),true)
 ########################################################################
@@ -51,6 +56,10 @@ export ac_cv_func_mprotect=yes
 export php_cv_shm_ipc=yes
 export php_cv_shm_mmap_anon=no
 export php_cv_shm_mmap_posix=no
+########################################################################
+# I hate special cases ... but opcache is a special case, so whatever ...
+########################################################################
+EM_OPCACHE_ENABLED := 1
 else
 $(info Opcache will break the build <8.4, skipping ...)
 endif

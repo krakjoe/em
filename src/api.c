@@ -37,6 +37,7 @@
 extern sapi_module_struct em_sapi_module;
 
 static const char EM_INI[] =
+    "opcache.enable=0\n"
     "allow_url_fopen=1\n"
     "allow_url_include=1\n"
     "html_errors=0\n"
