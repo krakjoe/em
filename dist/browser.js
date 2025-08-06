@@ -147,7 +147,7 @@ window.renderBrowserTab = async function(tab, container) {
     iframe.style.minHeight = '0';
     iframe.style.border = 'none';
     iframe.setAttribute('sandbox',
-        'allow-scripts allow-forms allow-same-origin');
+        'allow-scripts allow-downloadds allow-forms allow-same-origin');
             // allow scripts/styles, but not navigation outside
     // Listen for navigation events in the iframe and update nav bar/history
     iframe.addEventListener('load', function() {
@@ -299,7 +299,7 @@ window.addEventListener('load', async () => {
 
 // Clean up when leaving
 window.addEventListener('beforeunload', async () => {
-    const registration = await navigator.serviceWorker.getRegistration('/');
+    const registration = await navigator.serviceWorker.getRegistration();
     if (registration) {
         await registration.unregister();
     }
