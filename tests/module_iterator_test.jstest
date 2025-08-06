@@ -2,9 +2,11 @@ assert(
     Module,
     "Module should be defined")
 let it = Module.vfs.iterate("/");
+let vfsEncoder = new TextEncoder("utf-8");
+
 assert(!it.count(), "iterator should be empty");
-assert(Module.vfs.put("/one/two/three/four.txt", "four.txt"));
-assert(Module.vfs.put("/one/two/three/four", "four"));
+assert(Module.vfs.put("/one/two/three/four.txt", vfsEncoder.encode("four.txt")));
+assert(Module.vfs.put("/one/two/three/four", vfsEncoder.encode("four")));
 assert(it.reset(), "iterator should reset");
 assertEquals(it.count(), 1, "iterator should contain one entry");
 assertEquals(it.name(), "one", "iterator should be at /one");

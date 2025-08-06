@@ -1,13 +1,15 @@
+let vfsEncoder = new TextEncoder("utf-8");
+
 assert(Module, "Module should be defined")
-assert(Module.vfs.put("test", "content"))
+assert(Module.vfs.put("test", vfsEncoder.encode("content")))
 assertArray([
     99,111,110,116,101,110,116
 ], Module.vfs.get("test"))
 assert(Module.vfs.unlink("test"),
-    "unlink should return first time")
+    "unlink should return first time");
 assert(!Module.vfs.unlink("test"),
     "unlink should return false second time")
-assert(Module.vfs.put("one", "42"));
+assert(Module.vfs.put("one", vfsEncoder.encode("42")));
 assert(Module.vfs.move("one", "two"));
 assert(!Module.vfs.get("one"));
 assertArray([52, 50], /* has content */
