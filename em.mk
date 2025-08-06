@@ -162,6 +162,7 @@ $(EM_PHP_DIR)/config.status: $(EM_PHP_DIR)/config.deps $(EM_RECIPE_TARGETS)
 			--disable-cli \
 			--disable-phpdbg \
 			--enable-embed=static \
+			--disable-opcache-jit \
 			--disable-fiber-asm \
 			--without-pcre-jit \
 			$(EM_RECIPE_CONFIGURE)
