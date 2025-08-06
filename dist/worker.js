@@ -48,6 +48,14 @@ self.addEventListener('fetch', event => {
             return resolveResponse(promise, event);
         }
 
+        clients.forEach(client => {
+            if (client == browser) {
+                return;
+            }
+            client.postMessage({ type:
+                'CLIENT_REDIRECT', url: event.request.url });
+        });
+
         browser.postMessage({
             type: 'dispatch-request',
             id: id,

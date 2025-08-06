@@ -44,6 +44,8 @@ navigator.serviceWorker.addEventListener('message', function(event) {
                 response: response
             });
         }
+    } else if (event.data.type === 'CLIENT_REDIRECT') {
+        window.location.href = event.data.url;
     } else if (event.data.type === 'dispatch-request') {
         const url = new URL(event.data.url, window.location.url);
 
@@ -193,9 +195,26 @@ window.renderBrowserTab = async function(tab, container) {
 
 // At the very end of IDE loading, after everything is ready:
 window.addEventListener('load', async () => {
+    /* cleanup from previous loads */
+    if ('serviceWorker' in navigator) {
+        const registrations = await
+            navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+            await registration.unregister();
+        }
+    }
+
     if (typeof Module !== 'undefined' && Module.dispatch) {
+        const baseUrl = window.location.pathname.endsWith('/') ?
+            window.location.pathname :
+            window.location.pathname.substring(
+                0, 
+                window.location.pathname.lastIndexOf('/') + 1
+        );
+        const workerUrl = baseUrl + 'worker.js';
+        const workerScope = baseUrl;
         const registration = await navigator.serviceWorker.register(
-            '/worker.js', { scope: '/' });
+            workerUrl, { scope: workerScope });
 
         // Force SW to take control immediately
         if (registration.waiting) {

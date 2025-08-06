@@ -902,15 +902,16 @@ function initializeEventHandlers() {
 function switchPHPVersion() {
     const newVersion = phpVersionSelect.value;
     if (newVersion !== currentPHPVersion) {
-        const url = new URL(window.location);
-        url.searchParams.set('php', newVersion);
+        // Save the selected PHP version in localStorage
+        localStorage.setItem('em-php-version', newVersion);
         if (editor) {
             const currentCode = editor.getValue();
             if (currentCode) {
                 sessionStorage.setItem('em-demo-code', currentCode);
             }
         }
-        window.location.href = url.toString();
+        // Reload the page to apply the new version
+        window.location.reload();
     }
 }
 
@@ -1373,9 +1374,8 @@ function loadPHPRuntime() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Get PHP version from URL or default to 8.3
-    const params = new URL(window.location).searchParams;
-    currentPHPVersion = params.get('php') || '8.3';
+    // Get PHP version from localStorage or default to 8.3
+    currentPHPVersion = localStorage.getItem('em-php-version') || '8.3';
     initializeEditor();
     initializeEventHandlers();
     initializeGithubButton();
