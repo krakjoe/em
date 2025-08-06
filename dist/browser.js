@@ -16,6 +16,22 @@ function findContentType(headers, fallback) {
     return fallback;
 }
 
+function findRequestPath(uri) {
+    // Get the base path (e.g., '/em/')
+    const basePath = window.location.pathname.endsWith('/')
+        ? window.location.pathname
+        : window.location.pathname.substring(
+            0, window.location.pathname.lastIndexOf('/') + 1);
+
+    // If the request path starts with the base path, strip it
+    if (basePath !== '/' && uri.startsWith(uri)) {
+        const stripped = uri.slice(uri.length - 1);
+        // Special case: if stripped is empty, use '/'
+        return stripped === '' ? '/' : stripped;
+    }
+    return uri;
+}
+
 navigator.serviceWorker.addEventListener('message', function(event) {
     if (event.data.type == 'CLIENT_AUTH') {
         navigator.serviceWorker.controller.postMessage({
@@ -31,7 +47,7 @@ navigator.serviceWorker.addEventListener('message', function(event) {
 
             const response = Module.dispatch(
                 event.data.queued.method,
-                uri,
+                findRequestPath(uri),
                 findContentType(event.data.queued.headers,
                     'application/x-em-dispatch'),
                 body,
@@ -59,7 +75,7 @@ navigator.serviceWorker.addEventListener('message', function(event) {
 
         const response = Module.dispatch(
             event.data.method,
-            uri,
+            findRequestPath(uri),
             findContentType(event.data.headers,
                 'application/x-em-dispatch'),
             body,
