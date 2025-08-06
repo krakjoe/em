@@ -1,4 +1,12 @@
 const browserUUID = crypto.randomUUID();
+const workerScope = window.location.pathname.endsWith('/') ?
+    window.location.pathname :
+    window.location.pathname.substring(
+        0, 
+        window.location.pathname.lastIndexOf('/') + 1
+);
+
+const workerUrl = workerScope + 'worker.js';
 
 function findContentType(headers, fallback) {
     if (!headers) {
@@ -256,14 +264,6 @@ window.addEventListener('load', async () => {
     }
 
     if (typeof Module !== 'undefined' && Module.dispatch) {
-        const workerScope = window.location.pathname.endsWith('/') ?
-            window.location.pathname :
-            window.location.pathname.substring(
-                0, 
-                window.location.pathname.lastIndexOf('/') + 1
-        );
-
-        const workerUrl = workerScope + 'worker.js';
         const registration = await navigator.serviceWorker.register(
             workerUrl, { scope: workerScope });
 
@@ -299,7 +299,8 @@ window.addEventListener('load', async () => {
 
 // Clean up when leaving
 window.addEventListener('beforeunload', async () => {
-    const registration = await navigator.serviceWorker.getRegistration();
+    const registration = await navigator.serviceWorker
+        .getRegistration(workerScope);
     if (registration) {
         await registration.unregister();
     }
