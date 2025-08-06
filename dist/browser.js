@@ -23,9 +23,9 @@ function findRequestPath(uri) {
         : window.location.pathname.substring(
             0, window.location.pathname.lastIndexOf('/') + 1);
 
-    // If the request path starts with the base path, strip it
-    if (basePath !== '/' && uri.startsWith(uri)) {
-        const stripped = uri.slice(uri.length - 1);
+    // Only strip basePath if uri starts with it (and basePath is not '/')
+    if (basePath !== '/' && uri.startsWith(basePath)) {
+        const stripped = uri.slice(basePath.length - 1);
         // Special case: if stripped is empty, use '/'
         return stripped === '' ? '/' : stripped;
     }
@@ -163,15 +163,47 @@ window.renderBrowserTab = async function(tab, container) {
                 tab.historyIndex = tab.history.length - 1;
                 updateNavButtons();
             }
+
+            // Inject navigation guard for virtual webroot
+            const basePath = window.location.pathname.endsWith('/')
+                ? window.location.pathname
+                : window.location.pathname.substring(
+                    0, window.location.pathname.lastIndexOf('/') + 1);
+            if (iframe.contentWindow && iframe.contentDocument) {
+                const doc = iframe.contentDocument;
+                doc.addEventListener('click', function(e) {
+                    let a = e.target;
+                    while (a && a.tagName !== 'A') a = a.parentElement;
+                    if (a && a.tagName === 'A' && a.hasAttribute('href')) {
+                        let href = a.getAttribute('href');
+                        // Only rewrite absolute paths not under basePath
+                        if (href &&
+                            href.startsWith('/') &&
+                            basePath !== '/' &&
+                            !href.startsWith(basePath)) {
+                            a.setAttribute('href', basePath.replace(/\/$/, '') + href);
+                            // Optionally, prevent default and navigate via parent if you want full SPA control
+                        }
+                    }
+                }, true);
+            }
         } catch (e) {}
     });
 
+    // Compute the base path (virtual webroot) for this deployment
+    const basePath = window.location.pathname.endsWith('/')
+        ? window.location.pathname
+        : window.location.pathname.substring(
+            0, window.location.pathname.lastIndexOf('/') + 1);
+
     async function navigate(toUrl, addToHistory = true) {
         let url = toUrl.startsWith("/") ? toUrl : "/" + toUrl;
+        // Prepend basePath if not already present
+        if (basePath !== '/' && !url.startsWith(basePath)) {
+            url = basePath.replace(/\/$/, '') + url;
+        }
         urlInput.value = url;
-        
         iframe.src = url;
-        
         if (addToHistory) {
             tab.history = tab.history.slice(0, tab.historyIndex + 1);
             tab.history.push(url);
@@ -221,14 +253,14 @@ window.addEventListener('load', async () => {
     }
 
     if (typeof Module !== 'undefined' && Module.dispatch) {
-        const baseUrl = window.location.pathname.endsWith('/') ?
+        const workerScope = window.location.pathname.endsWith('/') ?
             window.location.pathname :
             window.location.pathname.substring(
                 0, 
                 window.location.pathname.lastIndexOf('/') + 1
         );
-        const workerUrl = baseUrl + 'worker.js';
-        const workerScope = baseUrl;
+
+        const workerUrl = workerScope + 'worker.js';
         const registration = await navigator.serviceWorker.register(
             workerUrl, { scope: workerScope });
 
