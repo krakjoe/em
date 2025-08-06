@@ -24,6 +24,7 @@ let currentContextPath = null;
 let isReady = false;
 let currentPHPVersion;
 let vfsDecoder = new TextDecoder('utf-8');
+let vfsEncoder = new TextEncoder('utf-8');
 
 const tabBar = document.getElementById('tabBar');
 const tabContainer = document.querySelector('.tab-container');
@@ -470,8 +471,7 @@ async function saveCurrentFile() {
     try {
         // Always encode as UTF-8 Uint8Array
         const value = editor.getValue();
-        const bytes = new TextEncoder().encode(value);
-        if (Module.vfs.put(currentOpenTab.path, bytes)) {
+        if (Module.vfs.put(currentOpenTab.path, vfsEncoder.encode(value))) {
             currentOpenTab.unsaved    = false;
             currentOpenTab.vfsContent = value;
             updateStatus(
@@ -578,7 +578,8 @@ async function createFile() {
     try {
         const success = Module.vfs.put(
             filename,
-            '<?php\n// New PHP file\necho "Hello from ' + filename + '!";\n?>'
+            vfsEncoder.encode(
+                '/* ' + filename + ' */')
         );
         if (success) {
             refreshFileTree();
@@ -1208,8 +1209,7 @@ async function loadGithubRepo(repoInput) {
                 }
             } else {
                 // Fallback: treat as UTF-8 string
-                contentBytes = new TextEncoder().encode(blob.content);
-                
+                contentBytes = vfsEncoder.encode(blob.content);
             }
             Module.vfs.put('/' + entry.path, contentBytes);
             fileCount++;
@@ -1247,7 +1247,7 @@ async function loadGithubGist(gistInput) {
             updateProgressBar(`Fetching: ${fname}`, i, total);
             if (file && file.content !== undefined) {
                 // Always encode as UTF-8 bytes for VFS
-                const contentBytes = new TextEncoder().encode(file.content);
+                const contentBytes = vfsEncoder.encode(file.content);
                 Module.vfs.put('/' + fname, contentBytes);
                 fileCount++;
             }
@@ -1289,7 +1289,7 @@ function runCode() {
         if (currentOpenTab.unsaved) {
             const currentOpenTabContent = editor.getValue();
             if (Module.vfs.put(
-                    currentOpenTab.path, currentOpenTabContent)) {
+                    currentOpenTab.path, vfsEncoder.encode(currentOpenTabContent))) {
                 currentOpenTab.content = currentOpenTabContent;
                 currentOpenTab.unsaved = false;
                 updateStatus(`Saved: ${currentOpenTab.path}`, 'success');

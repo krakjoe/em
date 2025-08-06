@@ -1,6 +1,76 @@
-// browser.js: Logic for the in-IDE browser tab
+const browserUUID = crypto.randomUUID();
 
-// Exported: create a browser tab object for openTabs
+function findContentType(headers, fallback) {
+    if (!headers) {
+        return fallback;
+    }
+
+    if (headers["Content-Type"]) {
+        return headers["Content-Type"];
+    }
+
+    if (headers["content-type"]) {
+        return headers["content-type"];
+    }
+
+    return fallback;
+}
+
+navigator.serviceWorker.addEventListener('message', function(event) {
+    if (event.data.type == 'CLIENT_AUTH') {
+        navigator.serviceWorker.controller.postMessage({
+            type: 'CLIENT_IDENT',
+            uuid: browserUUID
+        });
+
+        if (event.data.queued) {
+            const url = new URL(event.data.queued.url, window.location.url);
+            const uri = url.pathname + url.search;
+            const body = event.data.queued.body ?
+                new Uint8Array(event.data.queued.body) : null;
+
+            const response = Module.dispatch(
+                event.data.queued.method,
+                uri,
+                findContentType(event.data.queued.headers,
+                    'application/x-em-dispatch'),
+                body,
+            );
+
+            navigator.serviceWorker.controller.postMessage({
+                type: 'dispatch-response',
+                id: event.data.queued.id,
+                uuid: browserUUID,
+                response: response
+            });
+        }
+    } else if (event.data.type === 'dispatch-request') {
+        const url = new URL(event.data.url, window.location.url);
+
+        if (url.origin != window.location.origin) {
+            return;
+        }
+
+        const uri = url.pathname + url.search;
+        const body = event.data.body ?
+                new Uint8Array(event.data.body) : null;
+
+        const response = Module.dispatch(
+            event.data.method,
+            uri,
+            findContentType(event.data.headers,
+                'application/x-em-dispatch'),
+            body,
+        );
+
+        navigator.serviceWorker.controller.postMessage({
+            type: 'dispatch-response',
+            id: event.data.id,
+            ident: browserUUID,
+            response: response});
+    }
+});
+
 window.createBrowserTab = function(url = '/') {
     return {
         type: 'browser',
@@ -14,16 +84,19 @@ window.createBrowserTab = function(url = '/') {
     };
 };
 
-// Exported: render the browser tab content into the editor panel
-// Render the browser tab UI inside a dedicated, empty container (e.g., .browser-tab-container)
-// The container should be created and managed by the tab switching logic (see main.js)
-window.renderBrowserTab = function(tab, container) {
+window.renderBrowserTab = async function(tab, container) {
+    if (typeof Module === 'undefined' || !Module.dispatch) {
+        throw new Error('Module not ready - cannot create browser tab');
+    }
+
     const browserTabTemplate = document.getElementById('browserTabTemplate');
-    if (!browserTabTemplate) return;
+    if (!browserTabTemplate) {
+        return;
+    }
 
     const tabContent = browserTabTemplate.content.cloneNode(true);
     const browserTab = tabContent.querySelector('.browser-tab');
-    // Do not set width/height/flex on container; let parent control layout
+
     browserTab.style.width = '100%';
     browserTab.style.height = '100%';
     browserTab.style.display = 'flex';
@@ -38,94 +111,7 @@ window.renderBrowserTab = function(tab, container) {
     const backBtn = toolbar.querySelector('.browser-back');
     const fwdBtn = toolbar.querySelector('.browser-forward');
     const refreshBtn = toolbar.querySelector('.browser-refresh');
-    const menuBtn = toolbar.querySelector('.browser-menu');
-    const contextMenu = toolbar.querySelector('.browser-context-menu');
     const contentDiv = browserTab.querySelector('.browser-content');
-
-    // --- CONTEXT MENU (ellipsis/menu button, static markup) ---
-    let lastHtmlSource = '';
-    // Patch setIframeContent to remember last HTML
-    const originalSetIframeContent = setIframeContent;
-    setIframeContent = function(html) {
-        lastHtmlSource = html;
-        originalSetIframeContent(html);
-    };
-
-    // Show/hide and position the static context menu
-    function showContextMenu() {
-        // Position menu below the button, clamped to viewport
-        const rect = menuBtn.getBoundingClientRect();
-        // Temporarily show to measure size
-        contextMenu.style.display = 'block';
-        contextMenu.style.visibility = 'hidden';
-        contextMenu.style.left = '0px';
-        contextMenu.style.top = '0px';
-        const menuWidth = contextMenu.offsetWidth;
-        const menuHeight = contextMenu.offsetHeight;
-        // Default position: below button
-        let left = rect.left;
-        let top = rect.bottom + window.scrollY;
-        // Clamp right edge
-        if (left + menuWidth > window.innerWidth) {
-            left = window.innerWidth - menuWidth - 8;
-        }
-        // Clamp bottom edge
-        if (top + menuHeight > window.innerHeight + window.scrollY) {
-            top = rect.top + window.scrollY - menuHeight;
-        }
-        // Never negative
-        left = Math.max(8, left);
-        top = Math.max(8, top);
-        contextMenu.style.left = left + 'px';
-        contextMenu.style.top = top + 'px';
-        contextMenu.style.zIndex = '10000';
-        contextMenu.style.visibility = 'visible';
-    }
-    function hideContextMenu() {
-        contextMenu.style.display = 'none';
-    }
-    menuBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        showContextMenu();
-    });
-    // Hide menu on click outside
-    document.addEventListener('mousedown', function(e) {
-        if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target) && e.target !== menuBtn) {
-            hideContextMenu();
-        }
-    });
-    // Menu actions
-    contextMenu.querySelectorAll('.browser-context-menu-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            const action = item.getAttribute('data-action');
-            hideContextMenu();
-            if (action === 'refresh') {
-                refreshBtn.click();
-            } else if (action === 'view-source') {
-                // Open untitled tab with HTML source using the same pattern as loadDemo
-                if (window.openTabs && typeof window.switchTabView === 'function') {
-                    // Generate a unique name for the untitled source tab
-                    let baseName = 'untitled-source.html';
-                    let name = baseName;
-                    let counter = 1;
-                    while (window.openTabs.some(t => !t.path && t.name === name)) {
-                        name = baseName.replace('.html', `-${counter}.html`);
-                        counter++;
-                    }
-                    const newTab = {
-                        path: null,
-                        name,
-                        content: lastHtmlSource,
-                        unsaved: false
-                    };
-                    window.openTabs.push(newTab);
-                    window.switchTabView(newTab);
-                } else {
-                    alert('Tab API not available');
-                }
-            }
-        });
-    });
 
     // Set initial URL
     urlInput.value = tab.history[tab.historyIndex];
@@ -145,271 +131,39 @@ window.renderBrowserTab = function(tab, container) {
     iframe.setAttribute('sandbox',
         'allow-scripts allow-forms allow-same-origin');
             // allow scripts/styles, but not navigation outside
-
-    // Helper to write HTML to the iframe
-    function setIframeContent(html) {
-        iframe.onload = function() {
-            const doc = iframe.contentDocument;
-
-            try {
-                doc.open();
-                doc.write(html);
-                doc.close();
-            } catch (error) { } finally {
-                // Instrument links and forms
-                instrumentIframe(doc);
+    // Listen for navigation events in the iframe and update nav bar/history
+    iframe.addEventListener('load', function() {
+        try {
+            const newUrl =
+                iframe.contentWindow.location.pathname +
+                iframe.contentWindow.location.search +
+                iframe.contentWindow.location.hash;
+            if (newUrl && newUrl !== tab.history[tab.historyIndex]) {
+                urlInput.value = newUrl;
+                tab.history = tab.history.slice(0, tab.historyIndex + 1);
+                tab.history.push(newUrl);
+                tab.historyIndex = tab.history.length - 1;
+                updateNavButtons();
             }
-        };
-    }
+        } catch (e) {}
+    });
 
-    // Instrument links and forms in the iframe to reroute through dispatch
-    function instrumentIframe(doc) {
-        // Helper: is a URL relative/local (should be rerouted)?
-        function isRelativeUrl(url) {
-            // Intercept if not absolute, or if same-origin
-            if (!url) return false;
-            if (url.startsWith('data:') || url.startsWith('mailto:')) return false;
-            // Absolute URLs
-            if (/^(?:[a-z]+:)?\/\//i.test(url)) {
-                try {
-                    const u = new URL(url, window.location.origin);
-                    if (u.origin === window.location.origin) return true;
-                } catch {}
-                return false;
-            }
-            return true;
-        }
-        // Intercept all <a> clicks
-        Array.from(doc.querySelectorAll('a[href]')).forEach(a => {
-            a.addEventListener('click', function(e) {
-                const href = a.getAttribute('href');
-                if (isRelativeUrl(href)) {
-                    e.preventDefault();
-                    navigate(href);
-                }
-            });
-        });
-
-        // Intercept all <link rel="stylesheet"> requests and reroute through dispatch (only relative)
-        Array.from(doc.querySelectorAll('link[rel="stylesheet"][href]')).forEach(link => {
-            const href = link.getAttribute('href');
-            if (isRelativeUrl(href) && typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
-                try {
-                    let raw = Module.dispatch('GET', href, 'text/css', null);
-                    let body = raw;
-                    if (typeof raw === 'string') {
-                        const split = raw.split(/\r?\n\r?\n/);
-                        if (split.length > 1) {
-                            body = split.slice(1).join('\n\n');
-                        }
-                    }
-                    const style = doc.createElement('style');
-                    style.textContent = body;
-                    link.parentNode.replaceChild(style, link);
-                } catch (err) {
-                    // If error, remove the link and show error in console
-                    link.parentNode.removeChild(link);
-                    console.error('Failed to load stylesheet:', href, err);
-                }
-            }
-        });
-
-        // Intercept all <script src> requests and reroute through dispatch (only relative)
-        Array.from(doc.querySelectorAll('script[src]')).forEach(script => {
-            const src = script.getAttribute('src');
-            if (isRelativeUrl(src) && typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
-                try {
-                    let raw = Module.dispatch('GET', src, 'application/javascript', null);
-                    let body = raw;
-                    if (typeof raw === 'string') {
-                        const split = raw.split(/\r?\n\r?\n/);
-                        if (split.length > 1) {
-                            body = split.slice(1).join('\n\n');
-                        }
-                    }
-                    const inlineScript = doc.createElement('script');
-                    inlineScript.textContent = body;
-                    script.parentNode.replaceChild(inlineScript, script);
-                } catch (err) {
-                    script.parentNode.removeChild(script);
-                    console.error('Failed to load script:', src, err);
-                }
-            }
-        });
-
-        // Intercept all <img src>, <source srcset>, <video src>, <audio src>, <track src>, <iframe src>, <object data>, <embed src> (only relative)
-        // Helper for src/data attributes
-        function rerouteElementSrc(el, attr, mime) {
-            const url = el.getAttribute(attr);
-            // Accept an optional fourth argument: dataUriMime
-            const dataUriMimeArg = arguments.length > 3 ? arguments[3] : undefined;
-            if (isRelativeUrl(url) && typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
-                try {
-                    let raw = Module.dispatch('GET', url, mime, null);
-                    let headers = {}, body = raw;
-                    if (typeof raw === 'string') {
-                        const split = raw.split(/\r?\n\r?\n/);
-                        if (split.length > 1) {
-                            // Parse headers
-                            const headerLines = split[0].split(/\r?\n/);
-                            headerLines.forEach(line => {
-                                const idx = line.indexOf(':');
-                                if (idx > 0) {
-                                    const key = line.slice(0, idx).trim().toLowerCase();
-                                    const value = line.slice(idx + 1).trim();
-                                    headers[key] = value;
-                                }
-                            });
-                            body = split.slice(1).join('\n\n');
-                        }
-                    }
-                    // If mime is 'data/base64', treat body as base64 and set correct data URI MIME type
-                    if (mime === 'data/base64') {
-                        let base64 = body.replace(/\s+/g, '');
-                        // Use provided dataUriMime if given, else guess
-                        let dataUriMime = dataUriMimeArg;
-                        if (!dataUriMime) {
-                            dataUriMime = el.getAttribute('data-datauri-mime') || 'application/octet-stream';
-                            if (el.tagName === 'IMG') {
-                                const src = url;
-                                if (src.match(/\.jpe?g$/i)) dataUriMime = 'image/jpeg';
-                                else if (src.match(/\.png$/i)) dataUriMime = 'image/png';
-                                else if (src.match(/\.gif$/i)) dataUriMime = 'image/gif';
-                                else if (src.match(/\.svg$/i)) dataUriMime = 'image/svg+xml';
-                                else if (src.match(/\.webp$/i)) dataUriMime = 'image/webp';
-                            } else if (el.tagName === 'VIDEO') {
-                                dataUriMime = 'video/mp4';
-                            } else if (el.tagName === 'AUDIO') {
-                                dataUriMime = 'audio/mpeg';
-                            }
-                        }
-                        el.setAttribute(attr, `data:${dataUriMime};base64,${base64}`);
-                    } else {
-                        // For iframe/object/embed, just set srcdoc/data if possible
-                        if (el.tagName === 'IFRAME') {
-                            el.removeAttribute(attr);
-                            el.setAttribute('srcdoc', body);
-                        } else if (el.tagName === 'OBJECT') {
-                            el.removeAttribute(attr);
-                            el.innerHTML = body;
-                        } else {
-                            // fallback: set src to data URI (text, not base64)
-                            el.setAttribute(attr, `data:${mime},${encodeURIComponent(body)}`);
-                        }
-                    }
-                } catch (err) {
-                    el.setAttribute(attr, '');
-                    console.error('Failed to load resource:', url, err);
-                }
-            }
-        }
-
-        // Images (request as base64, but use correct data URI type)
-        Array.from(doc.querySelectorAll('img[src]')).forEach(img => {
-            const src = img.getAttribute('src') || '';
-            let dataUriMime = 'image/png';
-            if (src.match(/\.jpe?g$/i)) dataUriMime = 'image/jpeg';
-            else if (src.match(/\.gif$/i)) dataUriMime = 'image/gif';
-            else if (src.match(/\.svg$/i)) dataUriMime = 'image/svg+xml';
-            else if (src.match(/\.webp$/i)) dataUriMime = 'image/webp';
-            rerouteElementSrc(img, 'src', 'data/base64', dataUriMime);
-        });
-        // Video
-        Array.from(doc.querySelectorAll('video[src]')).forEach(video => rerouteElementSrc(video, 'src', 'data/base64', 'video/mp4'));
-        // Audio
-        Array.from(doc.querySelectorAll('audio[src]')).forEach(audio => rerouteElementSrc(audio, 'src', 'data/base64', 'audio/mpeg'));
-        // Source (for <picture>, <video>, <audio>)
-        Array.from(doc.querySelectorAll('source[src]')).forEach(source => {
-            // Try to guess mime from type attribute or parent
-            let mime = source.getAttribute('type') || 'application/octet-stream';
-            rerouteElementSrc(source, 'src', mime);
-        });
-        // Track (subtitles/captions)
-        Array.from(doc.querySelectorAll('track[src]')).forEach(track => rerouteElementSrc(track, 'src', 'text/vtt'));
-        // Iframe
-        Array.from(doc.querySelectorAll('iframe[src]')).forEach(iframe => rerouteElementSrc(iframe, 'src', 'text/html'));
-        // Object
-        Array.from(doc.querySelectorAll('object[data]')).forEach(obj => rerouteElementSrc(obj, 'data', 'application/octet-stream'));
-        // Embed
-        Array.from(doc.querySelectorAll('embed[src]')).forEach(embed => rerouteElementSrc(embed, 'src', 'application/octet-stream'));
-
-        // Intercept all <form> submissions
-        // ---
-        // FORM SUBMISSION HANDLING
-        // Note: For GET and application/x-www-form-urlencoded POST, we serialize form data as a query string.
-        // For multipart/form-data (file uploads), FormData cannot be directly serialized to a multipart string in JS without XHR/fetch or a custom serializer.
-        // If/when backend SAPI supports uploads, this can be improved to support multipart POST by serializing FormData as multipart and passing correct headers.
-        // For now, only URL-encoded forms are fully supported; multipart forms may require further JS work.
-        // ---
-        Array.from(doc.querySelectorAll('form')).forEach(form => {
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const action = form.getAttribute('action') || urlInput.value;
-                const method = (form.getAttribute('method') || 'GET').toUpperCase();
-                let formData = new FormData(form);
-                let params = new URLSearchParams();
-                for (const [key, value] of formData.entries()) {
-                    params.append(key, value);
-                }
-                let targetUrl = action;
-                if (method === 'GET') {
-                    targetUrl += (targetUrl.includes('?') ? '&' : '?') + params.toString();
-                    navigate(targetUrl);
-                } else {
-                    // For POST, send params as body
-                    navigate(targetUrl, true, params);
-                }
-            });
-        });
-    }
-
-    // Navigation logic
-    function navigate(toUrl, addToHistory = true, postData = null) {
-        urlInput.value = toUrl.startsWith("/") ? toUrl : "/" + toUrl;
-        iframe.srcdoc = '<em>Loading...</em>';
-        if (typeof Module !== 'undefined' && typeof Module.dispatch === 'function') {
-            try {
-                let raw;
-                if (postData) {
-                    // POST
-                    raw = Module.dispatch('POST', toUrl,
-                        'application/x-www-form-urlencoded', postData.toString());
-                } else {
-                    // GET
-                    raw = Module.dispatch('GET', toUrl, 'text/html', null);
-                }
-                let headers = {}, body = raw;
-                if (typeof raw === 'string') {
-                    const split = raw.split(/\r?\n\r?\n/);
-                    if (split.length > 1) {
-                        const headerLines = split[0].split(/\r?\n/);
-                        headerLines.forEach(line => {
-                            const idx = line.indexOf(':');
-                            if (idx > 0) {
-                                const key = line.slice(0, idx).trim().toLowerCase();
-                                const value = line.slice(idx + 1).trim();
-                                headers[key] = value;
-                            }
-                        });
-                        body = split.slice(1).join('\n\n');
-                    }
-                }
-                setIframeContent(body);
-            } catch (err) {
-                iframe.srcdoc = '<span style="color:red">Error: ' + (err && err.message ? err.message : err) + '</span>';
-            }
-        } else {
-            iframe.srcdoc = '<span style="color:red">PHP runtime not loaded</span>';
-        }
+    async function navigate(toUrl, addToHistory = true) {
+        let url = toUrl.startsWith("/") ? toUrl : "/" + toUrl;
+        urlInput.value = url;
+        
+        iframe.src = url;
+        
         if (addToHistory) {
             tab.history = tab.history.slice(0, tab.historyIndex + 1);
-            tab.history.push(toUrl);
+            tab.history.push(url);
             tab.historyIndex = tab.history.length - 1;
         }
         updateNavButtons();
     }
 
-    goBtn.addEventListener('click', () => navigate(urlInput.value));
+    goBtn.addEventListener('click',
+        () => navigate(urlInput.value));
     urlInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') navigate(urlInput.value);
     });
@@ -425,7 +179,8 @@ window.renderBrowserTab = function(tab, container) {
             navigate(tab.history[tab.historyIndex], false);
         }
     });
-    refreshBtn.addEventListener('click', () => navigate(tab.history[tab.historyIndex], false));
+    refreshBtn.addEventListener('click',
+        () => navigate(tab.history[tab.historyIndex], false));
 
     // Initial navigation
     navigate(tab.history[tab.historyIndex], false);
@@ -435,3 +190,47 @@ window.renderBrowserTab = function(tab, container) {
     contentDiv.appendChild(iframe);
     container.appendChild(browserTab);
 };
+
+// At the very end of IDE loading, after everything is ready:
+window.addEventListener('load', async () => {
+    if (typeof Module !== 'undefined' && Module.dispatch) {
+        const registration = await navigator.serviceWorker.register(
+            '/worker.js', { scope: '/' });
+
+        // Force SW to take control immediately
+        if (registration.waiting) {
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+        
+        await navigator.serviceWorker.ready;
+        
+        // Force SW to claim control of this page
+        if (registration.active) {
+            registration.active.postMessage({ type: 'CLIENTS_CLAIM' });
+        }
+        
+        // Wait for control
+        if (!navigator.serviceWorker.controller) {
+            await new Promise(resolve => {
+                navigator.serviceWorker.addEventListener(
+                    'controllerchange', resolve, { once: true });
+            });
+        }
+
+        // Tell the SW which client is the main thread
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'CLIENT_IDENT',
+                uuid: browserUUID
+            });
+        }
+    }
+});
+
+// Clean up when leaving
+window.addEventListener('beforeunload', async () => {
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    if (registration) {
+        await registration.unregister();
+    }
+});

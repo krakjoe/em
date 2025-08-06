@@ -40,25 +40,100 @@ Module.startup = function() {
 };
 
 /**
+ * Shall return a response object
+ * @param {number} address 
+ * @param {number} length 
+ * @returns {Object}
+ */
+Module.response = function(address, length) {
+    // First, copy all the raw data from heap before it gets freed
+    const heap = new Uint8Array(
+        Module.HEAPU8.buffer,
+        address, length
+    ).slice();
+    
+    // Convert to text for header parsing
+    const text = Module.iou.fromBytes(address, length);
+    
+    let statusCode = 200;
+    let statusText = 'OK';
+    let headers = {};
+    let headersEndOffset = 0;
+
+    const lines = text.split('\r\n');
+    // Parse status line
+    const statusMatch = lines[0].match(
+        /^HTTP\/[\d.]+\s+(\d{3})(?:\s+(.*))?$/i);
+    if (statusMatch) {
+        statusCode = parseInt(
+            statusMatch[1], 10);
+        statusText = statusMatch[2].trim();
+    } else {
+        throw new Error(
+            "Response is malformed, cannot continue");
+    }
+
+    let headerEndIndex = -1;
+    // Parse headers and find where body starts
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i] === '') {
+            headerEndIndex = i;
+            // Calculate byte offset where body starts
+            const headerText = lines.slice(0, i + 1).join('\r\n');
+            headersEndOffset = new TextEncoder()
+                .encode(headerText).length;
+            break;
+        }
+
+        const colonIndex = lines[i].indexOf(':');
+        if (colonIndex > 0) {
+            const key = lines[i]
+                .slice(0, colonIndex).trim();
+            const value = lines[i]
+                .slice(colonIndex + 1).trim();
+            headers[key] = value;
+        }
+    }
+
+    return {
+        status: {
+            code: statusCode,
+            text: statusText,
+        },
+        headers: headers,
+        body:     heap.slice(
+            headersEndOffset + // end of headers \r\n 
+            2)                 // terminating \r\n
+    };
+}
+
+/**
  * Shall dispatch the given request
  * @param {string} method
  * @param {string} uri
  * @param {string} mime
- * @param {string} request
- * @param {HTMLElement|Function|undefined} output
- * @returns string
+ * @param {Uint8Array} request
+ * @returns {*}
  */
-Module.dispatch = function(method, uri, mime = null, request = null, output) {
+Module.dispatch = function(method, uri, mime = null, request = null) {
     // Fire start event
     Module.dispatchEvent(new CustomEvent('dispatch.begin', { 
-        detail: { 
+        detail: {
             "method":  method,
             "uri":     uri,
             "mime":    mime,
             "request": request,
-            "output":  output 
         }
     }));
+    
+    let body = null;
+
+    // Copy body to accessible memory
+    if (request) {
+        body = Module._malloc(
+            request.byteLength);
+        Module.HEAPU8.set(request, body);
+    }
 
     // run the request, getting response address and length in return
     let result = {
@@ -66,12 +141,18 @@ Module.dispatch = function(method, uri, mime = null, request = null, output) {
             'em_run_request',
             'number',
             [ 'string', 'string', 'string',
-                'string', 'number' ],
+                'number', 'number' ],
             [ method, uri, mime,
-                request, request ? lengthBytesUTF8(request) : 0 ]),
+                request ? body : null,
+                request ? request.byteLength : 0]),
         length: Module.ccall(
             'em_run_length', 'number')
     };
+
+    // Free body if used
+    if (request) {
+        Module._free(body);
+    }
 
     // check for errors
     if (result.address < 0) {
@@ -82,7 +163,6 @@ Module.dispatch = function(method, uri, mime = null, request = null, output) {
                 "uri": uri,
                 "mime": mime,
                 "request": request,
-                "output": output,
                 "result": result }
         }));
 
@@ -99,7 +179,6 @@ Module.dispatch = function(method, uri, mime = null, request = null, output) {
                 "uri":     uri,
                 "mime":    mime,
                 "request": request,
-                "output":  output,
                 "result":  result }
         }));
 
@@ -107,11 +186,11 @@ Module.dispatch = function(method, uri, mime = null, request = null, output) {
         throw new Error("Unexpected result, no output");
     }
 
-    let text = null;
+    let response = null;
 
     try {
         // This ensures consistent encoding handling
-        text = Module.iou.fromBytes(result.address, result.length);
+        response = Module.response(result.address, result.length);
     } catch (exception) {
         // Fire exception event
         Module.dispatchEvent(new CustomEvent('dispatch.exception', { 
@@ -120,7 +199,6 @@ Module.dispatch = function(method, uri, mime = null, request = null, output) {
                 "uri":       uri,
                 "mime":      mime,
                 "request":   request,
-                "output":    output,
                 "result":    result,
                 "exception": exception }
         }));
@@ -134,26 +212,15 @@ Module.dispatch = function(method, uri, mime = null, request = null, output) {
    // Fire end event
     Module.dispatchEvent(new CustomEvent('dispatch.end', { 
         detail: { 
-            "method":  method,
-            "uri":     uri,
-            "mime":    mime,
-            "request": request,
-            "output":  output,
-            "text":    text }
+            "method":    method,
+            "uri":       uri,
+            "mime":      mime,
+            "request":   request,
+            "result":    result,
+            "response":  response }
     }));
 
-    if (typeof output === 'undefined') {
-        return text;
-    } else if (typeof HTMLElement !== 'undefined' &&
-        output instanceof HTMLElement) {
-        return output.textContent = text;
-    } else if (typeof output === 'function') {
-        return output(text);
-    }
-
-    throw new TypeError(
-        "Unexpected output type, " +
-        "expected HTMLElement|Function|undefined");   
+    return response;
 }
 
 /**
