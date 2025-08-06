@@ -172,8 +172,8 @@ window.renderBrowserTab = async function(tab, container) {
             if (iframe.contentWindow && iframe.contentDocument) {
                 const doc = iframe.contentDocument;
                 doc.addEventListener('click', function(e) {
-                    let a = e.target;
-                    while (a && a.tagName !== 'A') a = a.parentElement;
+                let a = e.target;
+                while (a && a.tagName !== 'A') a = a.parentElement;
                     if (a && a.tagName === 'A' && a.hasAttribute('href')) {
                         let href = a.getAttribute('href');
                         // Only rewrite absolute paths not under basePath
@@ -181,8 +181,11 @@ window.renderBrowserTab = async function(tab, container) {
                             href.startsWith('/') &&
                             basePath !== '/' &&
                             !href.startsWith(basePath)) {
-                            a.setAttribute('href', basePath.replace(/\/$/, '') + href);
-                            // Optionally, prevent default and navigate via parent if you want full SPA control
+                            const newHref = basePath.replace(/\/$/, '') + href;
+                            a.setAttribute('href', newHref);
+                            e.preventDefault();
+                            
+                            navigate(newHref);
                         }
                     }
                 }, true);
