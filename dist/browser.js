@@ -257,7 +257,7 @@ window.addEventListener('load', async () => {
     /* cleanup from previous loads */
     if ('serviceWorker' in navigator) {
         const registrations = await
-            navigator.serviceWorker.getRegistrations();
+            navigator.serviceWorker.getRegistrations(workerScope);
         for (const registration of registrations) {
             await registration.unregister();
         }
@@ -271,14 +271,14 @@ window.addEventListener('load', async () => {
         if (registration.waiting) {
             registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
-        
+
         await navigator.serviceWorker.ready;
-        
+
         // Force SW to claim control of this page
         if (registration.active) {
             registration.active.postMessage({ type: 'CLIENTS_CLAIM' });
         }
-        
+
         // Wait for control
         if (!navigator.serviceWorker.controller) {
             await new Promise(resolve => {
@@ -297,11 +297,9 @@ window.addEventListener('load', async () => {
     }
 });
 
-// Clean up when leaving
 window.addEventListener('beforeunload', async () => {
-    const registration = await navigator.serviceWorker
-        .getRegistration(workerScope);
-    if (registration) {
-        await registration.unregister();
+    if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller
+            .postMessage({ type: 'CLIENT_GOODBYE' });
     }
 });

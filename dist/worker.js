@@ -19,6 +19,10 @@ self.addEventListener('fetch', event => {
         return;
     }
 
+    if (!ident) {
+        return;
+    }
+
     event.respondWith((async () => {
         const id = Math.random().toString();
         const promise = new Promise(resolve => pending.set(id, resolve));
@@ -27,31 +31,17 @@ self.addEventListener('fetch', event => {
             return client.id === ident;
         });
 
-        const body = await event.request.arrayBuffer();
-
         if (!browser) {
-            clients.forEach(client => {
-                client.postMessage({
-                    type: 'CLIENT_AUTH',
-                    queued: {
-                        id: id,
-                        method:  event.request.method,
-                        url:     event.request.url,
-                        headers: event.request.headers ? 
-                            Object.fromEntries(
-                                event.request.headers.entries()) : {},
-                        body: body,
-                    }
-                });
-            });
-
-            return resolveResponse(promise, event);
+            return fetch(event.request);
         }
+
+        const body = await event.request.arrayBuffer();
 
         clients.forEach(client => {
             if (client == browser) {
                 return;
             }
+
             client.postMessage({ type:
                 'CLIENT_REDIRECT', url: event.request.url });
         });
@@ -82,13 +72,23 @@ self.addEventListener('message', event => {
             return;
 
         case 'CLIENT_IDENT':
-            if (auth && uuid != event.data.uuid) {
+            if (auth && uuid !== event.data.uuid) {
+                console.log("Rejecting ", uuid);
                 return;
             }
-
+            console.log("Hello ", event.data.uuid);
             ident = event.source.id;
             uuid  = event.data.uuid;
             auth  = true;
+            return;
+
+        case 'CLIENT_GOODBYE':
+            if (event.source.id === ident) {
+                console.log("Goodbye ", uuid);
+                ident = null;
+                uuid = null;
+                auth = false;
+            }
             return;
 
         case 'dispatch-response':

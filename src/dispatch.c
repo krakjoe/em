@@ -65,6 +65,13 @@ void em_dispatch_header(const char* format, ...) {
 
 static em_dispatch_handler_t em_dispatch_select(const char* mime, sapi_request_info* info);
 
+static zend_always_inline void em_dispatch_nocache(void) {
+    em_dispatch_header(
+        "Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate");
+    em_dispatch_header("Pragma", "no-cache");
+    em_dispatch_header("Expires: 0");
+}
+
 em_dispatch_handler_t em_dispatch_setup(sapi_request_info* info, const char* method, const char* uri, const char* mime, const char* request, size_t length) {
     SG(server_context) = (void*) &__em_request_buffer;
 
@@ -172,12 +179,13 @@ void em_dispatch_cleanup(sapi_request_info* info) {
 void em_dispatch_error(sapi_request_info* info) {
     em_dispatch_header("Status: 400 Not Found");
     em_dispatch_header("Content-Type: text/plain");
+    em_dispatch_nocache();
 }
 
 void em_dispatch_exception(sapi_request_info* info) {
     em_dispatch_header("Status: 500 Internal Server Error");
     em_dispatch_header("Content-Type: text/plain");
-    /* send more content maybe ... */
+    em_dispatch_nocache();
 }
 
 void em_dispatch_api(sapi_request_info* info) {
@@ -208,6 +216,8 @@ void em_dispatch_file(sapi_request_info* info) {
         em_dispatch_mime(info,
             "application/octet-stream"));
     em_dispatch_header("Content-Length: %zu", length);
+    em_dispatch_nocache();
+
     sapi_send_headers();
     em_buffer_response(address, length);
 }
@@ -246,7 +256,9 @@ void em_dispatch_script(sapi_request_info* info) {
         return;
     }
 
-    em_dispatch_header("Status: 200 OK");
+    em_dispatch_header(
+        "Status: 200 OK");
+    em_dispatch_nocache();
     em_execute(ops);
 }
 
@@ -274,6 +286,8 @@ void em_dispatch_base64(sapi_request_info* info) {
     em_dispatch_header("Status: 200 OK");
     em_dispatch_header("Content-Type: data/base64");
     em_dispatch_header("Content-Length: %zu", ZSTR_LEN(encoded));
+    em_dispatch_nocache();
+
     sapi_send_headers();
 
     em_buffer_response(
