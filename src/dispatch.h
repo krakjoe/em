@@ -22,11 +22,58 @@
 
 #include <SAPI.h>
 
+#include "buffer.h"
+
+extern HashTable __em_environ__;
+
 typedef void(*em_dispatch_handler_t)(sapi_request_info* info);
+
+typedef struct _em_dispatch_context_t {
+    HashTable environ;
+    struct {
+        struct {
+            em_buffer_t head;
+            em_buffer_t body;
+        } request;
+        struct {
+            em_buffer_t head;
+            em_buffer_t body;
+        } response;
+    } buffers;
+    struct {
+        zend_llist request;
+        zend_llist response;
+    } headers;
+    sapi_request_info *info;
+} em_dispatch_context_t;
+
+typedef struct _em_dispatch_header_t {
+    struct {
+        char* data;
+        size_t len;
+    } key;
+    struct {
+        char* data;
+        size_t len;
+    } value;
+} em_dispatch_header_t;
+
+bool em_dispatch_env(HashTable* table, const char* env, size_t elen, bool persistence);
+void em_dispatch_env_import(zval* vars);
 
 em_dispatch_handler_t em_dispatch_setup(
     sapi_request_info* info,
-    const char* method, const char* uri, const char* mime,
-    const char* request, size_t length);
-void em_dispatch_cleanup(sapi_request_info* info);
+    const char* env,  size_t elen,
+    const char* head, size_t hlen,
+    const char* body, size_t blen);
+em_dispatch_handler_t em_dispatch_setup_script(
+    sapi_request_info* info,
+    const char* script);
+em_dispatch_handler_t em_dispatch_setup_code(
+    sapi_request_info* info,
+    const char* code, size_t length);
+
+void em_dispatch_cleanup(void);
+void em_dispatch_startup(void);
+void em_dispatch_shutdown(void);
 #endif

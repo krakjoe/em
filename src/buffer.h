@@ -27,6 +27,7 @@ typedef struct _em_buffer_t {
     size_t length;
     size_t max;
     size_t position;
+    char*  token;
 } em_buffer_t;
 
 #define EM_BUFFER_EMPTY (em_buffer_t) {NULL, 0, 0, 0}

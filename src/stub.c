@@ -44,7 +44,7 @@ int posix_spawnp(pid_t *pid, const char *file,
 /**
  * the asan runtime links it's own reallocarray
  */
-#if !defined(EM_SANITIZERS)
+#if !defined(EM_SANITIZE_ASAN) && !defined(EM_SANITIZE_UBSAN)
 void *reallocarray(void *ptr, size_t nmemb, size_t size) {
     if (nmemb && size && SIZE_MAX / nmemb < size) {
         return NULL;

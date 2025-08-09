@@ -18,6 +18,8 @@
 
 #include "buffer.h"
 
+#include <SAPI.h>
+
 em_buffer_t __em_response_buffer = EM_BUFFER_EMPTY;
 em_buffer_t __em_request_buffer  = EM_BUFFER_EMPTY;
 
@@ -41,6 +43,10 @@ void em_buffer_clear(em_buffer_t* buffer, bool _free) {
 }
 
 size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len) {
+    if (!len) {
+        return 0;
+    }
+
     if (buffer->length + len >= buffer->max) {
         buffer->max = buffer->length + len + 1024;
         buffer->value = realloc(
@@ -61,6 +67,10 @@ size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len) {
 } 
 
 size_t em_buffer_response(const char* buf, size_t len) {
+    if (!SG(headers_sent)) {
+        sapi_send_headers();
+    }
+
     return em_buffer_write(&__em_response_buffer, buf, len);
 }
 

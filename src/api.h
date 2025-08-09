@@ -23,16 +23,18 @@
 #include <php.h>
 
 int EMSCRIPTEN_KEEPALIVE em_startup(void);
+
+bool EMSCRIPTEN_KEEPALIVE em_env_import(
+  const char* env, size_t length);
+
+uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
+    const char* env,  size_t elen,
+    const char* head, size_t hlen,
+    const char* body, size_t blen);
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(
     const char* code, size_t length);
 uintptr_t EMSCRIPTEN_KEEPALIVE
   em_run_script(const char* script);
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
-    const char* method,
-    const char* uri,
-    const char* mime,
-    const char* request,
-    size_t length);
 size_t EMSCRIPTEN_KEEPALIVE em_run_length(void);
 void EMSCRIPTEN_KEEPALIVE em_run_free(void);
 void EMSCRIPTEN_KEEPALIVE em_shutdown(void);

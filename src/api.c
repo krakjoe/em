@@ -27,6 +27,7 @@
 #include <php_main.h>
 #include <php_variables.h>
 #include <zend_exceptions.h>
+#include <ext/json/php_json.h>
 
 #include "vfs.h"
 #include "http.h"
@@ -37,6 +38,7 @@
 extern sapi_module_struct em_sapi_module;
 
 static const char EM_INI[] =
+    "variables_order=EGPCS\n"
     "opcache.enable=0\n"
     "allow_url_fopen=1\n"
     "allow_url_include=1\n"
@@ -48,7 +50,6 @@ static const char EM_INI[] =
     "output_buffering=0\n"
     "max_execution_time=0\n"
     "max_input_time=-1\n\0";
-
 
 typedef zend_op_array* (*zend_compile_func_t)(
     zend_file_handle* fh,
@@ -248,6 +249,12 @@ static zend_always_inline void em_deactivate(void) {
 
 /* {{{ exports */
 int EMSCRIPTEN_KEEPALIVE em_startup(void) {
+    /**
+     * We don't expect to leak, this is not leak suppression
+     * We are stopping uaf at leak checker
+     */
+    putenv("USE_ZEND_ALLOC=0");
+
 #ifdef ZTS
     php_tsrm_startup();
 #ifdef _WIN32
@@ -261,7 +268,7 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 
     em_sapi_module.ini_entries =
         malloc(sizeof(EM_INI));
-    memcpy(em_sapi_module.ini_entries,
+    memcpy((void*)em_sapi_module.ini_entries,
         EM_INI, sizeof(EM_INI));
 
     /* do not attempt to scan search paths for ini */
@@ -279,66 +286,76 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     sapi_module.ub_write    = em_buffer_response;
     sapi_module.log_message = em_buffer_log;
 
+    em_dispatch_startup();
     em_http_startup();
     em_vfs_startup();
+
+    php_import_environment_variables = em_dispatch_env_import;
 
     return SUCCESS;
 }
 
+bool EMSCRIPTEN_KEEPALIVE em_env_import(const char* env, size_t elen) {
+    if (zend_hash_num_elements(&__em_environ__)) {
+        /**
+         * We need every import to clear the table
+         */
+        zend_hash_clean(&__em_environ__);
+    }
+
+    return em_dispatch_env(&__em_environ__, env, elen, true);
+}
+
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(const char* code, size_t length) {
+    sapi_request_info* info = &SG(request_info);
+    em_dispatch_handler_t em_dispatch_request =
+        em_dispatch_setup_code(info, code, length);
+
     if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
-    zend_op_array* ops =
-        em_compile_string(code, length);
-
-    if (ops) {
-        em_execute(ops);
-    }
-
+    em_dispatch_request(info);
+    em_dispatch_cleanup();
     em_deactivate();
 
     return (uintptr_t) __em_response_buffer.value;
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_script(const char* script) {
+    sapi_request_info* info = &SG(request_info);
+    em_dispatch_handler_t em_dispatch_request =
+        em_dispatch_setup_script(info, script);
+
     if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
-    zend_op_array* ops =
-        em_compile_script(script);
-
-    if (ops) {
-        em_execute(ops);
-    }
-
+    em_dispatch_request(info);
+    em_dispatch_cleanup();
     em_deactivate();
 
     return (uintptr_t) __em_response_buffer.value;
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
-    const char* method,
-    const char* uri,
-    const char* mime,
-    const char* request,
-    size_t length) {
+    const char* env,  size_t elen,
+    const char* head, size_t hlen,
+    const char* body, size_t blen) {
     sapi_request_info* info = &SG(request_info);
-
     em_dispatch_handler_t em_dispatch_request =
         em_dispatch_setup(
-            info, method, uri,
-            mime, request, length);
+            info,
+            env,  elen,
+            head, hlen,
+            body, blen);
 
     if (em_activate(true) != SUCCESS) {
-        em_dispatch_cleanup(info);
         return (uintptr_t) -1;
     }
 
     em_dispatch_request(info);
-    em_dispatch_cleanup(info);
+    em_dispatch_cleanup();
     em_deactivate();
 
     return (uintptr_t) __em_response_buffer.value;
@@ -353,6 +370,7 @@ void EMSCRIPTEN_KEEPALIVE em_run_free(void) {
 }
 
 void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
+    em_dispatch_shutdown();
     em_http_shutdown();
     em_vfs_shutdown();
 
@@ -368,7 +386,7 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
 #endif
 
     if (em_sapi_module.ini_entries) {
-        free(em_sapi_module.ini_entries);
+        free((void*)em_sapi_module.ini_entries);
     }
 } /* }}} */
 
@@ -528,8 +546,26 @@ __em_sapi_headers_leave:
     return SAPI_HEADER_SENT_SUCCESSFULLY;
 }
 
-static void em_sapi_env(zval *vars)
+static char* em_sapi_getenv(const char* name, size_t length) {
+    em_dispatch_context_t* context = SG(server_context);
+    HashTable* table = context ?
+        &context->environ :
+        &__em_environ__;
+
+    zval* item = zend_hash_str_find(
+        table, name, length);
+
+    if (!item) {
+        return NULL;
+    }
+
+    return Z_STRVAL_P(item);
+}
+
+static void em_sapi_server(zval *vars)
 {
+    em_dispatch_context_t* context = SG(server_context);
+
 	php_import_environment_variables(vars);
 
     if (SG(request_info).request_method) {
@@ -543,6 +579,41 @@ static void em_sapi_env(zval *vars)
         php_register_variable("PHP_SELF",
             (char*)SG(request_info).path_translated, vars);
     }
+
+    zend_llist_position position;
+    em_dispatch_header_t* header =
+        zend_llist_get_first_ex(
+            &context->headers.request, &position);
+    if (header && (header = zend_llist_get_next_ex(&context->headers.request, &position))) {
+        do {
+            /* CGI standard:
+                prefix with HTTP_
+                replace - with _
+                uppercase characters */
+            char* skey = emalloc(
+                header->key.len + sizeof("HTTP_"));
+            memcpy(skey,
+                ZEND_STRL("HTTP_"));
+
+            for (size_t pos = 0; pos < header->key.len; pos++) {
+                switch (header->key.data[pos]) {
+                    case '-':
+                        skey[(sizeof("HTTP_") -1) + pos] = '_';
+                    break;
+
+                    default:
+                        skey[(sizeof("HTTP_") -1) + pos] =
+                            toupper(header->key.data[pos]);
+                }
+            }
+
+            skey[(sizeof("HTTP_") -1) + header->key.len] = 0;
+
+            php_register_variable(
+                skey, header->value.data, vars);
+            efree(skey);
+        } while ((header = zend_llist_get_next_ex(&context->headers.request, &position)));
+    }
 }
 
 sapi_module_struct em_sapi_module = {
@@ -555,14 +626,14 @@ sapi_module_struct em_sapi_module = {
     em_sapi_write,                /* ub write */
     em_sapi_flush,                /* flush */
     NULL,                         /* get uid */
-    NULL,                         /* getenv */
+    em_sapi_getenv,               /* getenv */
     em_sapi_error,                /* error handler */
     NULL,                         /* header handler */
     em_sapi_headers,              /* send headers handler */
     NULL,                         /* send header handler */
     em_sapi_post,                 /* read post */
     em_sapi_cookies,              /* read cookies */
-    em_sapi_env,                  /* register server variables */
+    em_sapi_server,               /* register server variables */
     em_sapi_log,                  /* log message */
     NULL,                         /* get request time */
     NULL,                         /* terminate process */

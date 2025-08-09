@@ -108,62 +108,100 @@ Module.response = function(address, length) {
 }
 
 /**
+ * Shall update the execution environment
+ * @param {object} environment 
+ * @returns 
+ */
+Module.environ = function(environment) {
+    const json =
+        JSON.stringify(environment);
+
+    const encoder = new TextEncoder("utf-8");
+    const buffer  = encoder.encode(json);
+
+    let heap = Module._malloc(
+        buffer.byteLength + 1);
+    Module.HEAPU8.set(buffer, heap);
+    Module.HEAPU8[heap + buffer.byteLength] = 0;
+
+    let result = Module.ccall(
+        "em_env_import", "number", [
+            "number", "number"
+        ],[
+            heap,
+            buffer.byteLength
+    ]);
+
+    Module._free(heap);
+    return result;
+};
+
+/**
  * Shall dispatch the given request
- * @param {string} method
- * @param {string} uri
- * @param {string} mime
- * @param {Uint8Array} request
+ * @param {Uint8Array} env
+ * @param {Uint8Array} head
+ * @param {Uint8Array} body
  * @returns {*}
  */
-Module.dispatch = function(method, uri, mime = null, request = null) {
-    // Fire start event
+Module.dispatch = function(env, head, body) {
     Module.dispatchEvent(new CustomEvent('dispatch.begin', { 
         detail: {
-            "method":  method,
-            "uri":     uri,
-            "mime":    mime,
-            "request": request,
+            "env":   env,
+            "head":  head,
+            "body":  body,
         }
     }));
-    
-    let body = null;
 
-    // Copy body to accessible memory
-    if (request) {
-        body = Module._malloc(
-            request.byteLength);
-        Module.HEAPU8.set(request, body);
-    }
-
-    // run the request, getting response address and length in return
-    let result = {
-        address: Module.ccall(
-            'em_run_request',
-            'number',
-            [ 'string', 'string', 'string',
-                'number', 'number' ],
-            [ method, uri, mime,
-                request ? body : null,
-                request ? request.byteLength : 0]),
-        length: Module.ccall(
-            'em_run_length', 'number')
+    let request = {
+        env:  Module._malloc(env.byteLength +  1),
+        head: Module._malloc(head.byteLength + 1),
+        body: Module._malloc(body.byteLength + 1)
     };
 
-    // Free body if used
-    if (request) {
-        Module._free(body);
+    Module.HEAPU8.set(env,  request.env);
+    Module.HEAPU8.set(head, request.head);
+    Module.HEAPU8.set(body, request.body);
+
+    Module.HEAPU8[request.env  + env.byteLength]  = 0;
+    Module.HEAPU8[request.head + head.byteLength] = 0;
+    Module.HEAPU8[request.body + body.byteLength] = 0;
+
+    let result = {
+        address: -1,
+        length:  -1,
+    };
+
+    try {
+        result = {
+            address: Module.ccall(
+                'em_run_request',
+                'number',
+                [   'number','number',    /* const char* env,  size_t elen */
+                    'number', 'number',   /* const char* head, size_t hlen */
+                    'number', 'number'    /* const char* body, size_t blen */
+                ], [ 
+                    request.env,  env.byteLength,
+                    request.head, head.byteLength,
+                    request.body, body.byteLength,
+                ]),
+            length: Module.ccall(
+                'em_run_length', 'number')
+        };
+    } finally {
+        Module._free(request.env);
+        Module._free(request.head);
+        Module._free(request.body);
     }
 
     // check for errors
     if (result.address < 0) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('dispatch.error', { 
-            detail: { 
-                "method": method,
-                "uri": uri,
-                "mime": mime,
-                "request": request,
-                "result": result }
+            detail: {
+                "env":   env,
+                "head":  head,
+                "body":  body,
+            }
         }));
 
         // we don't need to care about freeing, nothing was allocated
@@ -175,11 +213,10 @@ Module.dispatch = function(method, uri, mime = null, request = null) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('dispatch.error', { 
             detail: {
-                "method":  method,
-                "uri":     uri,
-                "mime":    mime,
-                "request": request,
-                "result":  result }
+                "env":   env,
+                "head":  head,
+                "body":  body,
+            }
         }));
 
         // we don't need to care about freeing, nothing was allocated
@@ -194,13 +231,12 @@ Module.dispatch = function(method, uri, mime = null, request = null) {
     } catch (exception) {
         // Fire exception event
         Module.dispatchEvent(new CustomEvent('dispatch.exception', { 
-            detail: { 
-                "method":    method,
-                "uri":       uri,
-                "mime":      mime,
-                "request":   request,
-                "result":    result,
-                "exception": exception }
+            detail: {
+                "env":       env,
+                "head":      head,
+                "body":      body,
+                "exception": exception,
+            }
         }));
 
         throw exception;
@@ -211,13 +247,12 @@ Module.dispatch = function(method, uri, mime = null, request = null) {
 
    // Fire end event
     Module.dispatchEvent(new CustomEvent('dispatch.end', { 
-        detail: { 
-            "method":    method,
-            "uri":       uri,
-            "mime":      mime,
-            "request":   request,
-            "result":    result,
-            "response":  response }
+        detail: {
+            "env":      env,
+            "head":     head,
+            "body":     body,
+            "response": response,
+        }
     }));
 
     return response;

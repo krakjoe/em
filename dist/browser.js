@@ -1,12 +1,83 @@
-const browserUUID = crypto.randomUUID();
-const workerScope = window.location.pathname.endsWith('/') ?
-    window.location.pathname :
-    window.location.pathname.substring(
-        0, 
-        window.location.pathname.lastIndexOf('/') + 1
-);
+const encoder = new TextEncoder("utf-8");
 
-const workerUrl = workerScope + 'worker.js';
+window.browserTab = {
+    type: 'browser',
+    name: 'Browser',
+    url: '/',
+    history: ['/'],
+    historyIndex: 0,
+    path: null,
+    unsaved: false
+};
+
+class Browser {
+
+    constructor(frame, vroot, droot, boot, worker) {
+        this.frame  = frame;
+        this.vroot  = vroot;
+        this.droot  = droot;
+        this.boot   = boot;
+        this.worker = worker;
+        this.uuid   = crypto.randomUUID();
+
+        this.frame.addEventListener("load", function(){
+            this.frame.contentWindow.postMessage({
+                type: 'CLIENT_INIT',
+                vroot:  this.vroot,
+                boot:   this.boot,
+                worker: this.worker,
+            }, '*');
+        }.bind(this), { once: true });
+
+        this.frame.src = this.boot;
+
+        window.addEventListener('message', async function(event) {
+            if (event.data && event.data.type === 'CLIENT_INIT_ACK') {
+                await this.frame.contentWindow.postMessage({
+                    type:  'CLIENT_IDENT',
+                    uuid:  this.uuid,
+                });
+                return;
+            }
+
+            if (typeof Module == 'undefined' || !Module.ready) {
+                return;
+            }
+
+            if (event.data.type === 'CLIENT_REQUEST') {                
+                const url = new URL(event.data.url, window.location.url);
+                if (url.origin != window.location.origin) {
+                    console.log("wrong origin");
+                    return;
+                }
+
+                const response = Module.dispatch(
+                    encoder.encode(JSON.stringify({
+                        DOCUMENT_ROOT: this.droot,
+                        VIRTUAL_ROOT:  this.vroot
+                    })),
+                    new Uint8Array(event.data.head),
+                    event.data.body ?
+                        new Uint8Array(event.data.body) :
+                            null,
+                );
+
+                console.log("response", response);
+                this.frame.contentWindow.postMessage({
+                    type: 'CLIENT_RESPONSE',
+                    id: event.data.id,
+                    ident: this.uuid,
+                    response: response});
+            }
+        }.bind(this));
+    }
+
+    frame  = null;
+    vroot  = null;
+    boot   = null;
+    worker = null;
+    uuid   = null;
+}
 
 function findContentType(headers, fallback) {
     if (!headers) {
@@ -24,152 +95,87 @@ function findContentType(headers, fallback) {
     return fallback;
 }
 
-function findRequestPath(uri) {
-    // Get the base path (e.g., '/em/')
-    const basePath = window.location.pathname.endsWith('/')
-        ? window.location.pathname
-        : window.location.pathname.substring(
-            0, window.location.pathname.lastIndexOf('/') + 1);
+window.updateBrowserButtons = async function(container) {
+    const back =
+        container.querySelector("#browser-back");
+    back.disabled = window.browserTab.historyIndex <= 0;
 
-    // Only strip basePath if uri starts with it (and basePath is not '/')
-    if (basePath !== '/' && uri.startsWith(basePath)) {
-        const stripped = uri.slice(basePath.length - 1);
-        // Special case: if stripped is empty, use '/'
-        return stripped === '' ? '/' : stripped;
-    }
-    return uri;
+    const forward =
+        container.querySelector("#browser-back");
+    forward.disabled =
+        window.browserTab.historyIndex >=
+            window.browserTab.history.length - 1;
 }
 
-navigator.serviceWorker.addEventListener('message', function(event) {
-    if (event.data.type == 'CLIENT_AUTH') {
-        navigator.serviceWorker.controller.postMessage({
-            type: 'CLIENT_IDENT',
-            uuid: browserUUID
-        });
+window.setUpBrowserContainer = async function(container) {
+    await window.loadConfiguration();
 
-        if (event.data.queued) {
-            const url = new URL(event.data.queued.url, window.location.url);
-            const uri = url.pathname + url.search;
-            const body = event.data.queued.body ?
-                new Uint8Array(event.data.queued.body) : null;
+    const toolbar = container.querySelector('#browser-toolbar');
+    const urlInput = toolbar.querySelector('#browser-url');
+    const goBtn = toolbar.querySelector('#browser-go');
+    const backBtn = toolbar.querySelector('#browser-back');
+    const fwdBtn = toolbar.querySelector('#browser-forward');
+    const refreshBtn = toolbar.querySelector('#browser-refresh');
 
-            const response = Module.dispatch(
-                event.data.queued.method,
-                findRequestPath(uri),
-                findContentType(event.data.queued.headers,
-                    'application/x-em-dispatch'),
-                body,
-            );
-
-            navigator.serviceWorker.controller.postMessage({
-                type: 'dispatch-response',
-                id: event.data.queued.id,
-                uuid: browserUUID,
-                response: response
-            });
+    // setup toolbar
+    goBtn.addEventListener('click',
+        () => window.navigateBrowser(container, urlInput.value));
+    urlInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            window.navigateBrowser(
+                container, urlInput.value);
         }
-    } else if (event.data.type === 'CLIENT_REDIRECT') {
-        window.location.href = event.data.url;
-    } else if (event.data.type === 'dispatch-request') {
-        const url = new URL(event.data.url, window.location.url);
-
-        if (url.origin != window.location.origin) {
-            return;
+    });
+    backBtn.addEventListener('click', () => {
+        if (window.browserTab.historyIndex > 0) {
+            window.browserTab.historyIndex--;
+            window.navigateBrowser(container,
+                window.browserTab.history[
+                    window.browserTab.historyIndex], false);
         }
+    });
+    fwdBtn.addEventListener('click', () => {
+        if (window.browserTab.historyIndex <
+                window.browserTab.history.length - 1) {
+            window.browserTab.historyIndex++;
+            window.navigateBrowser(container,
+                window.browserTab.history[
+                    window.browserTab.historyIndex], false);
+        }
+    });
+    refreshBtn.addEventListener('click',
+        () => window.navigateBrowser(container,
+            window.browserTab.history[
+                window.browserTab.historyIndex], false));
+    
+    // Setup content
+    const iframe = container.querySelector('#browser-frame');
 
-        const uri = url.pathname + url.search;
-        const body = event.data.body ?
-                new Uint8Array(event.data.body) : null;
+    iframe.Browser = new Browser(
+        iframe,
+        window.configurationTab.configuration["vroot"],
+        window.configurationTab.configuration["droot"],
+        window.configurationTab.configuration["boot"],
+        window.configurationTab.configuration["worker"]);
 
-        const response = Module.dispatch(
-            event.data.method,
-            findRequestPath(uri),
-            findContentType(event.data.headers,
-                'application/x-em-dispatch'),
-            body,
-        );
-
-        navigator.serviceWorker.controller.postMessage({
-            type: 'dispatch-response',
-            id: event.data.id,
-            ident: browserUUID,
-            response: response});
-    }
-});
-
-window.createBrowserTab = function(url = '/') {
-    return {
-        type: 'browser',
-        name: 'Browser',
-        url: url,
-        history: [url],
-        historyIndex: 0,
-        // The browser tab does not have a file path
-        path: null,
-        unsaved: false
-    };
-};
-
-window.renderBrowserTab = async function(tab, container) {
-    if (typeof Module === 'undefined' || !Module.dispatch) {
-        throw new Error('Module not ready - cannot create browser tab');
-    }
-
-    const browserTabTemplate = document.getElementById('browserTabTemplate');
-    if (!browserTabTemplate) {
-        return;
-    }
-
-    const tabContent = browserTabTemplate.content.cloneNode(true);
-    const browserTab = tabContent.querySelector('.browser-tab');
-
-    browserTab.style.width = '100%';
-    browserTab.style.height = '100%';
-    browserTab.style.display = 'flex';
-    browserTab.style.flexDirection = 'column';
-    browserTab.style.flex = '1 1 auto';
-    browserTab.style.overflow = 'hidden';
-    browserTab.style.minHeight = '0';
-
-    const toolbar = browserTab.querySelector('.browser-toolbar');
-    const urlInput = toolbar.querySelector('.browser-url');
-    const goBtn = toolbar.querySelector('.browser-go');
-    const backBtn = toolbar.querySelector('.browser-back');
-    const fwdBtn = toolbar.querySelector('.browser-forward');
-    const refreshBtn = toolbar.querySelector('.browser-refresh');
-    const contentDiv = browserTab.querySelector('.browser-content');
-
-    // Set initial URL
-    urlInput.value = tab.history[tab.historyIndex];
-
-    function updateNavButtons() {
-        backBtn.disabled = tab.historyIndex <= 0;
-        fwdBtn.disabled = tab.historyIndex >= tab.history.length - 1;
-    }
-
-    // Create the iframe for browser content
-    const iframe = document.createElement('iframe');
-    iframe.className = 'browser-iframe';
-    iframe.style.width = '100%';
-    iframe.style.flex = '1 1 auto';
-    iframe.style.minHeight = '0';
-    iframe.style.border = 'none';
-    iframe.setAttribute('sandbox',
-        'allow-scripts allow-downloads allow-forms allow-same-origin');
-            // allow scripts/styles, but not navigation outside
     // Listen for navigation events in the iframe and update nav bar/history
-    iframe.addEventListener('load', function() {
+    iframe.addEventListener('load', async function() {
         try {
             const newUrl =
                 iframe.contentWindow.location.pathname +
                 iframe.contentWindow.location.search +
                 iframe.contentWindow.location.hash;
-            if (newUrl && newUrl !== tab.history[tab.historyIndex]) {
+            if (newUrl &&
+                newUrl !== window.browserTab.history[
+                    window.browserTab.historyIndex
+                ]) {
                 urlInput.value = newUrl;
-                tab.history = tab.history.slice(0, tab.historyIndex + 1);
-                tab.history.push(newUrl);
-                tab.historyIndex = tab.history.length - 1;
-                updateNavButtons();
+                window.browserTab.history = window.browserTab.history
+                    .slice(0, window.browserTab.historyIndex + 1);
+                window.browserTab.history.push(newUrl);
+                window.browserTab.historyIndex =
+                    window.browserTab.history.length - 1;
+                window.updateBrowserButtons(container);
             }
 
             // Inject navigation guard for virtual webroot
@@ -179,9 +185,14 @@ window.renderBrowserTab = async function(tab, container) {
                     0, window.location.pathname.lastIndexOf('/') + 1);
             if (iframe.contentWindow && iframe.contentDocument) {
                 const doc = iframe.contentDocument;
-                doc.addEventListener('click', function(e) {
-                let a = e.target;
-                while (a && a.tagName !== 'A') a = a.parentElement;
+                doc.addEventListener('click', function(e)
+                {
+                    let a = e.target;
+                    
+                    while (a && a.tagName !== 'A') {
+                        a = a.parentElement;
+                    }
+
                     if (a && a.tagName === 'A' && a.hasAttribute('href')) {
                         let href = a.getAttribute('href');
                         // Only rewrite absolute paths not under basePath
@@ -192,114 +203,58 @@ window.renderBrowserTab = async function(tab, container) {
                             const newHref = basePath.replace(/\/$/, '') + href;
                             a.setAttribute('href', newHref);
                             e.preventDefault();
-                            
-                            navigate(newHref);
+                            window.navigateBrowser(container, newHref);
                         }
                     }
                 }, true);
             }
-        } catch (e) {}
+        } catch (e) {} 
     });
+}
 
+window.navigateBrowser = async function(container, toUrl, addToHistory = true) {
     // Compute the base path (virtual webroot) for this deployment
     const basePath = window.location.pathname.endsWith('/')
         ? window.location.pathname
         : window.location.pathname.substring(
             0, window.location.pathname.lastIndexOf('/') + 1);
 
-    async function navigate(toUrl, addToHistory = true) {
-        let url = toUrl.startsWith("/") ? toUrl : "/" + toUrl;
-        // Prepend basePath if not already present
-        if (basePath !== '/' && !url.startsWith(basePath)) {
-            url = basePath.replace(/\/$/, '') + url;
-        }
-        urlInput.value = url;
-        iframe.src = url;
-        if (addToHistory) {
-            tab.history = tab.history.slice(0, tab.historyIndex + 1);
-            tab.history.push(url);
-            tab.historyIndex = tab.history.length - 1;
-        }
-        updateNavButtons();
+    let url = toUrl.startsWith("/") ? toUrl : "/" + toUrl;
+
+    // Prepend basePath if not already present
+    if (basePath !== '/' && !url.startsWith(basePath)) {
+        url = basePath.replace(/\/$/, '') + url;
     }
 
-    goBtn.addEventListener('click',
-        () => navigate(urlInput.value));
-    urlInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter') navigate(urlInput.value);
-    });
-    backBtn.addEventListener('click', () => {
-        if (tab.historyIndex > 0) {
-            tab.historyIndex--;
-            navigate(tab.history[tab.historyIndex], false);
-        }
-    });
-    fwdBtn.addEventListener('click', () => {
-        if (tab.historyIndex < tab.history.length - 1) {
-            tab.historyIndex++;
-            navigate(tab.history[tab.historyIndex], false);
-        }
-    });
-    refreshBtn.addEventListener('click',
-        () => navigate(tab.history[tab.historyIndex], false));
+    const input = container
+        .querySelector("#browser-url");
+    input.value = url;
 
-    // Initial navigation
-    navigate(tab.history[tab.historyIndex], false);
+    if (addToHistory) {
+        window.browserTab.history =
+            window.browserTab.history.slice(
+                0, window.browserTab.historyIndex + 1);
+        window.browserTab.history.push(url);
+        window.browserTab.historyIndex =
+            window.browserTab.history.length - 1;
+    }
 
-    // Add toolbar and iframe to the browser tab
-    contentDiv.innerHTML = '';
-    contentDiv.appendChild(iframe);
-    container.appendChild(browserTab);
+    const frame = container
+        .querySelector(
+            "#browser-frame");
+    frame.src = url;
+
+    window.updateBrowserButtons(container);
+}
+
+window.updateBrowserContainer = async function(container, tab) {
+    if (tab.type != "browser") {
+        container.style.display = "none";
+        return;
+    }
+
+    window.navigateBrowser(
+        container,
+        tab.history[tab.historyIndex]);
+    container.style.display = "block";
 };
-
-// At the very end of IDE loading, after everything is ready:
-window.addEventListener('load', async () => {
-    /* cleanup from previous loads */
-    if ('serviceWorker' in navigator) {
-        const registrations = await
-            navigator.serviceWorker.getRegistrations(workerScope);
-        for (const registration of registrations) {
-            await registration.unregister();
-        }
-    }
-
-    if (typeof Module !== 'undefined' && Module.dispatch) {
-        const registration = await navigator.serviceWorker.register(
-            workerUrl, { scope: workerScope });
-
-        // Force SW to take control immediately
-        if (registration.waiting) {
-            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-
-        await navigator.serviceWorker.ready;
-
-        // Force SW to claim control of this page
-        if (registration.active) {
-            registration.active.postMessage({ type: 'CLIENTS_CLAIM' });
-        }
-
-        // Wait for control
-        if (!navigator.serviceWorker.controller) {
-            await new Promise(resolve => {
-                navigator.serviceWorker.addEventListener(
-                    'controllerchange', resolve, { once: true });
-            });
-        }
-
-        // Tell the SW which client is the main thread
-        if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-                type: 'CLIENT_IDENT',
-                uuid: browserUUID
-            });
-        }
-    }
-});
-
-window.addEventListener('beforeunload', async () => {
-    if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller
-            .postMessage({ type: 'CLIENT_GOODBYE' });
-    }
-});

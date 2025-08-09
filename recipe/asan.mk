@@ -13,17 +13,17 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
+# Sanitizers tend to make very large builds:
+#  So they are split into ubsan/asan like they are in php-src
+########################################################################
 $(eval $(call EM_RECIPE_ADD_CONFIGURE,  --enable-address-sanitizer))
-$(eval $(call EM_RECIPE_ADD_CONFIGURE,  --enable-undefined-sanitizer))
 
 $(eval $(call EM_RECIPE_ADD_CFLAGS,  -fno-omit-frame-pointer))
 $(eval $(call EM_RECIPE_ADD_LDFLAGS, -fno-omit-frame-pointer))
 
 $(eval $(call EM_RECIPE_ADD_CFLAGS,  -fsanitize=address))
-$(eval $(call EM_RECIPE_ADD_CFLAGS,  -fsanitize=undefined))
 $(eval $(call EM_RECIPE_ADD_LDFLAGS, -fsanitize=address))
-$(eval $(call EM_RECIPE_ADD_LDFLAGS, -fsanitize=undefined))
 
-$(eval $(call EM_RECIPE_ADD_CFLAGS,  -DEM_SANITIZERS))
-$(eval $(call EM_RECIPE_ADD_LDFLAGS, -DEM_SANITIZERS))
+$(eval $(call EM_RECIPE_ADD_CFLAGS,  -DEM_SANITIZE_ASAN))
+$(eval $(call EM_RECIPE_ADD_LDFLAGS, -DEM_SANITIZE_ASAN))
 

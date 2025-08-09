@@ -47,6 +47,8 @@ const statusBar = document.getElementById('statusBar');
 const output = document.getElementById('output');
 const outputStatus = document.getElementById('outputStatus');
 const previewButton = document.getElementById('previewButton');
+const configurationButton = document.getElementById('configurationButton');
+
 const editorPanel = document.getElementById('editorPanel') || document.querySelector('.editor-panel') || document.getElementById('editor')?.parentElement;
 
 function resetVFS() {
@@ -151,34 +153,34 @@ function switchTabView(tab) {
             const editorValue = editor.getValue();
             currentOpenTab.content = editorValue;
             if (currentOpenTab.path && currentOpenTab.vfsContent !== undefined) {
-                currentOpenTab.unsaved = (editorValue !== currentOpenTab.vfsContent);
+                currentOpenTab.unsaved =
+                    (editorValue !== currentOpenTab.vfsContent);
             } else if (!currentOpenTab.path) {
-                currentOpenTab.unsaved = (editorValue !== demos[currentOpenTab.source]);
+                currentOpenTab.unsaved =
+                    (editorValue !== demos[currentOpenTab.source]);
             }
         }
     }
+
+    let browserContainer =
+        editorPanel
+            .querySelector('#browser-container');
+    window.updateBrowserContainer(
+        browserContainer, tab);
+
+    let configurationContainer =
+        editorPanel
+            .querySelector('#configuration-container');
+    window.updateConfigurationContainer(
+        configurationContainer, tab);
+
     currentOpenTab = tab;
     // If browser tab, render browser UI, else show editor
     if (tab.type === 'browser') {
         if (editor && editor.getWrapperElement()) {
             editor.getWrapperElement().style.display = 'none';
         }
-        // Remove any existing browser container
-        let browserContainer = editorPanel.querySelector('.browser-tab-container');
-        if (browserContainer) {
-            browserContainer.remove();
-        }
-        // Create a container for the browser tab UI
-        browserContainer = document.createElement('div');
-        browserContainer.className = 'browser-tab-container';
-        editorPanel.appendChild(browserContainer);
-        window.renderBrowserTab(tab, browserContainer);
     } else {
-        // Remove browser UI if present
-        let browserContainer = editorPanel.querySelector('.browser-tab-container');
-        if (browserContainer) {
-            browserContainer.remove();
-        }
         if (editor && editor.getWrapperElement()) {
             // Ensure the editor is attached and visible
             if (!editorPanel.contains(editor.getWrapperElement())) {
@@ -215,16 +217,32 @@ function switchTabView(tab) {
     }
     renderTabs();
 }
+
 // Add Preview button logic to open browser tab
 if (previewButton) {
     previewButton.addEventListener('click', function() {
         // Only open one browser tab at a time
-        let browserTab = openTabs.find(tab => tab.type === 'browser');
-        if (!browserTab) {
-            browserTab = window.createBrowserTab();
-            openTabs.push(browserTab);
+        let openBrowserTab = openTabs.find(
+            tab => tab.type === 'browser');
+        if (!openBrowserTab) {
+            openTabs.push(window.browserTab);
         }
-        switchTabView(browserTab);
+        switchTabView(
+            openBrowserTab || window.browserTab);
+    });
+}
+
+// Add Configuration button logic to open configuration tab
+if (configurationButton) {
+    configurationButton.addEventListener('click', function() {
+        // Only open one browser tab at a time
+        let openConfigurationTab = openTabs.find(
+            tab => tab.type === 'configuration');
+        if (!openConfigurationTab) {
+            openTabs.push(window.configurationTab);
+        }
+        switchTabView(
+            openConfigurationTab || window.configurationTab);
     });
 }
 
@@ -1037,7 +1055,6 @@ function initializeEditor() {
     renderTabs();
 }
 
-
 function initializeGithubButton() {
     const githubBtn = document.getElementById('githubBtn');
     const githubContextMenu = document.getElementById('githubContextMenu');
@@ -1341,6 +1358,18 @@ function runCode() {
     }
 }
 
+async function initializeBrowser() {
+    await window.setUpBrowserContainer(
+        document.getElementById(
+            "browser-container"));
+}
+
+async function initializeConfiguration() {
+    await window.setUpConfigurationContainer(
+        document.getElementById(
+            "configuration-container"));
+}
+
 function loadPHPRuntime() {
     updateStatus(`Loading PHP ${currentPHPVersion}...`, 'loading');
     if (typeof editorStatus !== 'undefined' && editorStatus) editorStatus.textContent = 'Loading...';
@@ -1373,10 +1402,12 @@ function loadPHPRuntime() {
     document.head.appendChild(script);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Get PHP version from localStorage or default to 8.3
     currentPHPVersion = localStorage.getItem('em-php-version') || '8.3';
     initializeEditor();
+    await initializeBrowser();
+    initializeConfiguration();
     initializeEventHandlers();
     initializeGithubButton();
     loadPHPRuntime();

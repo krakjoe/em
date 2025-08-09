@@ -7,6 +7,7 @@
     <title>em</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="browser.css">
+    <link rel="stylesheet" href="configuration.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
 </head>
@@ -27,7 +28,7 @@
             <button id="clearOutput">Clear Output</button>
             <button id="resetVFS">Reset VFS</button>
             <button id="previewButton">Open Browser</button>
-            
+            <button id="configurationButton">Configuration</button>
             <select id="demoSelect" class="demo-list">
                 <option value="">Load Demo...</option>
                 <option value="hello">Hello World</option>
@@ -82,20 +83,44 @@
                     <span id="editorStatus">Loading...</span>
                 </div>
                 <textarea id="codeEditor"></textarea>
-            </div>
-
-            <template id="browserTabTemplate">
-                <div class="browser-tab">
-                    <div class="browser-toolbar">
-                        <button class="browser-back" title="Back">⟨</button>
-                        <button class="browser-forward" title="Forward">⟩</button>
-                        <button class="browser-refresh" title="Refresh">⟳</button>
-                        <input class="browser-url" type="text" value="/" spellcheck="false" autocomplete="off" />
-                        <button class="browser-go" title="Go">Go</button>
+                <div id="browser-container">
+                    <div id="browser-toolbar">
+                        <button id="browser-back" title="Back">⟨</button>
+                        <button id="browser-forward" title="Forward">⟩</button>
+                        <button id="browser-refresh" title="Refresh">⟳</button>
+                        <input id="browser-url" type="text" value="/" spellcheck="false" autocomplete="off" />
+                        <button id="browser-go" title="Go">Go</button>
                     </div>
-                    <div class="browser-content"></div>
+                    <div id="browser-content">
+                        <iframe 
+                            id="browser-frame"
+                            sandbox="allow-scripts allow-downloads allow-forms allow-same-origin"
+                        >
+                        </iframe>
+                    </div>
                 </div>
-            </template>
+                <div id="configuration-container" style="display:none;">
+                    <div id="configuration-header">Virtual Server Configuration</div>
+                    <div id="configuration-content">
+                        <form id="configuration-form">
+                            <label for="vroot">Virtual Root</label>
+                            <input type="text" name="vroot" placeholder="/virtual/" autocomplete="off" required/>
+                            <label for="vroot">Boot Loader</label>
+                            <input type="text" name="boot" placeholder="/virtual/boot.html" autocomplete="off" required/>
+                            <label for="vroot">Server</label>
+                            <input type="text" name="worker" placeholder="/virtual/worker.js" autocomplete="off" required/>
+                            <label for="root">Document Root</label>
+                            <input type="text" name="droot" placeholder="/" autocomplete="off" />
+                            <label for="env">Environment Variables (JSON)</label>
+                            <textarea name="env" rows="4" placeholder='{"FOO":"bar"}' json></textarea>
+                            <div id="configuration-actions">
+                                <button type="submit" id="configuration-save">Save</button>
+                                <button type="button" id="configuration-reset">Reset to Defaults</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
 
             <div class="output-panel">
                 <div class="output-resizer"></div>
@@ -154,6 +179,8 @@
     <script src="modal.js"></script>
     <script src="main.js"></script>
     <script src="output-resizer.js"></script>
+    <script src="configuration.js"></script>
     <script src="browser.js"></script>
+
 </body>
 </html>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Virtual Browser Boot</title>
+    <script>
+    window.addEventListener('message', async (event) => 
+    {
+        if (!event.data) return;
+        if (event.data.type === "CLIENT_INIT") {
+            if ('serviceWorker' in navigator) {
+                try {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    if (!registrations.some(registered => {
+                        return registered.scope.endsWith(event.data.vroot);
+                    })) {
+                        window.parent.updateStatus(
+                            "Registering service worker for browesr");
+
+                        try {
+                            const registration = await navigator.serviceWorker
+                                .register(event.data.worker, 
+                                { scope: event.data.vroot });
+
+                            window.parent.updateStatus(
+                                "Registration of service worker complete");
+
+                            if (registration.waiting)
+                                registration.waiting
+                                    .postMessage(
+                                        { type: 'SKIP_WAITING' });
+                            if (registration.active)
+                                registration.active
+                                    .postMessage(
+                                        { type: 'CLIENTS_CLAIM' });
+
+                            if (!navigator.serviceWorker.controller) {
+                                await new Promise(resolve => {
+                                    navigator.serviceWorker.addEventListener(
+                                        'controllerchange', resolve, { once: true });
+                                });
+                            }
+
+                            window.parent.updateStatus(
+                                "Service worker initialized for browser");
+                        } catch (e) {
+                            window.parent.updateStatus(
+                                "Service worker initialization failed, please check configuration", "error");
+                        }
+                    } else {
+                        window.parent.updateStatus(
+                            "Welcome back, reinitializing service worker for browser");
+                    }
+
+                    if (navigator.serviceWorker.controller) {
+                        await navigator.serviceWorker.controller
+                            .postMessage(event.data);
+                    }
+                } catch (e) {
+                    window.parent.updateStatus(
+                        "Failed to boot virtual browser, see console", "error");
+                    console.error('Failed to boot virtual browser', e);
+                }
+            }
+        } else {
+            if (!navigator.serviceWorker.controller) {
+                await new Promise(resolve => {
+                    navigator.serviceWorker.addEventListener(
+                        'controllerchange', resolve, { once: true });
+                });
+            }
+            await navigator.serviceWorker.controller.postMessage(event.data);
+        }
+    });
+
+    navigator.serviceWorker.addEventListener('message', async (event) => {
+        if (window.parent) {
+            await window.parent.postMessage(event.data, '*');
+        }
+    });
+    </script>
