@@ -1,11 +1,15 @@
-
+let defaultVroot = 
+    window.location.hostname.includes("localhost") ?
+        "/dist/virtual" : "/em/virtual";
 window.configurationDefaults = {
-    vroot: "/dist/virtual/",
-    boot:  "/dist/virtual/boot.html",
-    worker: "/dist/virtual/worker.js",
+    vroot: defaultVroot,
+    boot:  `${defaultVroot}/boot.html`,
+    worker:`${defaultVroot}/worker.js`,
     droot: "/",
     env: {
-
+        "SERVER_HOSTNAME": window.location.hostname,
+        "SERVER_PORT":     window.location.port ?
+                            window.location.port : 80
     },
 };
 
