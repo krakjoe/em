@@ -137,14 +137,14 @@ jobs:
           node-version: '18'
           
       - name: Install dependencies
-        run: npm install
+        run: cd dist && npm install
         
-      - name: Download all PHP artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           
-      - name: Organize PHP builds for Electron
+      - name: Organize builds for Electron
         run: |
           mkdir -p dist/latest
           
