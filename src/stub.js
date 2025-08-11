@@ -22,6 +22,14 @@
 Module.ready = false;
 
 /**
+ * Shall provide encoding services
+ */
+Module.encoding = {
+    in:  new TextEncoder("utf-8"),
+    out: new TextDecoder("utf-8")
+};
+
+/**
  * Shall be true when executing under nodejs
  */
 Module.node = typeof process !== 'undefined' &&
@@ -69,8 +77,9 @@ Module.response = function(address, length) {
             statusMatch[1], 10);
         statusText = statusMatch[2].trim();
     } else {
+        console.error("Response is malformed, cannot continue", text)
         throw new Error(
-            "Response is malformed, cannot continue");
+            "Response is malformed, cannot continue, see console");
     }
 
     let headerEndIndex = -1;
@@ -80,7 +89,7 @@ Module.response = function(address, length) {
             headerEndIndex = i;
             // Calculate byte offset where body starts
             const headerText = lines.slice(0, i + 1).join('\r\n');
-            headersEndOffset = new TextEncoder()
+            headersEndOffset = Module.encoding.in
                 .encode(headerText).length;
             break;
         }
@@ -116,9 +125,8 @@ Module.environ = function(environment) {
     const json =
         JSON.stringify(environment);
 
-    const encoder = new TextEncoder("utf-8");
-    const buffer  = encoder.encode(json);
-
+    const buffer =
+        Module.encoding.in.encode(json);
     let heap = Module._malloc(
         buffer.byteLength + 1);
     Module.HEAPU8.set(buffer, heap);
@@ -524,11 +532,6 @@ Module.vfs = {
     EM_VFS_INV:  0,
     EM_VFS_DIR:  1,
     EM_VFS_FILE: 2,
-
-    /**
-     * Shall provide encoding services
-     */
-    encoder: new TextEncoder(),
 
     /**
      * Shall write file contents to the filesystem

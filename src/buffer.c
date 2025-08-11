@@ -20,9 +20,6 @@
 
 #include <SAPI.h>
 
-em_buffer_t __em_response_buffer = EM_BUFFER_EMPTY;
-em_buffer_t __em_request_buffer  = EM_BUFFER_EMPTY;
-
 void em_buffer_clear(em_buffer_t* buffer, bool _free) {
     if (buffer->value) {
         if (_free) {
@@ -64,16 +61,4 @@ size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len) {
     buffer->value[
         buffer->length] = 0;
     return len;
-} 
-
-size_t em_buffer_response(const char* buf, size_t len) {
-    if (!SG(headers_sent)) {
-        sapi_send_headers();
-    }
-
-    return em_buffer_write(&__em_response_buffer, buf, len);
-}
-
-size_t em_buffer_request(const char* buf, size_t len) {
-    return em_buffer_write(&__em_request_buffer, buf, len);
 }

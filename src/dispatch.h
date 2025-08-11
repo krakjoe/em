@@ -38,6 +38,7 @@ typedef struct _em_dispatch_context_t {
         struct {
             em_buffer_t head;
             em_buffer_t body;
+            em_buffer_t join;
         } response;
     } buffers;
     struct {
@@ -60,6 +61,19 @@ typedef struct _em_dispatch_header_t {
 
 bool em_dispatch_env(HashTable* table, const char* env, size_t elen, bool persistence);
 void em_dispatch_env_import(zval* vars);
+
+typedef enum _em_dispatch_selector_t {
+    EM_DISPATCH_HEAD,
+    EM_DISPATCH_BODY,
+} em_dispatch_selector_t;
+
+void em_dispatch_header(const char* format, ...);
+
+size_t em_dispatch_response(em_dispatch_selector_t selector, const char* buffer, size_t length);
+
+static size_t em_dispatch_writer(const char* buffer, size_t length) {
+    return em_dispatch_response(EM_DISPATCH_BODY, buffer, length);
+}
 
 em_dispatch_handler_t em_dispatch_setup(
     sapi_request_info* info,

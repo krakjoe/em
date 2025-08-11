@@ -20,6 +20,9 @@ class Browser {
         this.worker = worker;
         this.uuid   = crypto.randomUUID();
 
+        this.channel = new BroadcastChannel('em-browser');
+        this.setupChannelListener();
+
         this.frame.addEventListener("load", function(){
             this.frame.contentWindow.postMessage({
                 type: 'CLIENT_INIT',
@@ -39,37 +42,64 @@ class Browser {
                 });
                 return;
             }
+        }.bind(this));
+    }
 
-            if (typeof Module == 'undefined' || !Module.ready) {
-                return;
-            }
-
-            if (event.data.type === 'CLIENT_REQUEST') {                
-                const url = new URL(event.data.url, window.location.url);
-                if (url.origin != window.location.origin) {
-                    console.log("wrong origin");
+    setupChannelListener() {
+        this.channel.onmessage = (event) => {
+            if (event.data.type === 'CLIENT_REQUEST') {
+                
+                if (typeof Module == 'undefined' || !Module.ready) {
+                    console.log('[browser] Not Ready', event.data);
                     return;
                 }
 
-                const response = Module.dispatch(
-                    encoder.encode(JSON.stringify({
-                        DOCUMENT_ROOT: this.droot,
-                        VIRTUAL_ROOT:  this.vroot
-                    })),
-                    new Uint8Array(event.data.head),
-                    event.data.body ?
-                        new Uint8Array(event.data.body) :
-                            null,
-                );
+                const url = new URL(event.data.url, window.location.origin);
+                if (url.origin != window.location.origin) {
+                    console.log("[browser] External Origin", event.data);
+                    return;
+                }
 
-                console.log("response", response);
-                this.frame.contentWindow.postMessage({
-                    type: 'CLIENT_RESPONSE',
-                    id: event.data.id,
-                    ident: this.uuid,
-                    response: response});
+                console.log('[browser] Dispatching', event.data);
+                try {
+                    const response = Module.dispatch(
+                        encoder.encode(JSON.stringify({
+                            DOCUMENT_ROOT: this.droot,
+                            VIRTUAL_ROOT:  this.vroot
+                        })),
+                        new Uint8Array(event.data.head),
+                        event.data.body ?
+                            new Uint8Array(event.data.body) :
+                                new Uint8Array(),
+                    );
+
+                    console.log("[browser] Responding", response);
+                    this.channel.postMessage({
+                        type: 'CLIENT_RESPONSE',
+                        id: event.data.id,
+                        response: response
+                    });
+                } catch (error) {
+                    console.error('[browser] Exception Occured', error);
+
+                    this.channel.postMessage({
+                        type: 'CLIENT_RESPONSE',
+                        id: event.data.id,
+                        response: {
+                            status: { 
+                                code: 500,
+                                text: 'Internal Server Error' 
+                            },
+                            headers: { 
+                                'Content-Type': 'text/plain' 
+                            },
+                            body: new Uint8Array(
+                                encoder.encode('Server Error'))
+                        }
+                    });
+                }
             }
-        }.bind(this));
+        };
     }
 
     frame  = null;
@@ -117,15 +147,16 @@ window.setUpBrowserContainer = async function(container) {
     const fwdBtn = toolbar.querySelector('#browser-forward');
     const refreshBtn = toolbar.querySelector('#browser-refresh');
 
-    // setup toolbar
     goBtn.addEventListener('click',
         () => window.navigateBrowser(container, urlInput.value));
+    
     urlInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
             window.navigateBrowser(
                 container, urlInput.value);
         }
     });
+    
     backBtn.addEventListener('click', () => {
         if (window.browserTab.historyIndex > 0) {
             window.browserTab.historyIndex--;
@@ -134,6 +165,7 @@ window.setUpBrowserContainer = async function(container) {
                     window.browserTab.historyIndex], false);
         }
     });
+
     fwdBtn.addEventListener('click', () => {
         if (window.browserTab.historyIndex <
                 window.browserTab.history.length - 1) {
@@ -143,12 +175,12 @@ window.setUpBrowserContainer = async function(container) {
                     window.browserTab.historyIndex], false);
         }
     });
+
     refreshBtn.addEventListener('click',
         () => window.navigateBrowser(container,
             window.browserTab.history[
                 window.browserTab.historyIndex], false));
     
-    // Setup content
     const iframe = container.querySelector('#browser-frame');
 
     iframe.Browser = new Browser(
@@ -158,7 +190,6 @@ window.setUpBrowserContainer = async function(container) {
         window.configurationTab.configuration["boot"],
         window.configurationTab.configuration["worker"]);
 
-    // Listen for navigation events in the iframe and update nav bar/history
     iframe.addEventListener('load', async function() {
         try {
             const newUrl =
@@ -178,7 +209,6 @@ window.setUpBrowserContainer = async function(container) {
                 window.updateBrowserButtons(container);
             }
 
-            // Inject navigation guard for virtual webroot
             const basePath = window.location.pathname.endsWith('/')
                 ? window.location.pathname
                 : window.location.pathname.substring(
@@ -213,7 +243,6 @@ window.setUpBrowserContainer = async function(container) {
 }
 
 window.navigateBrowser = async function(container, toUrl, addToHistory = true) {
-    // Compute the base path (virtual webroot) for this deployment
     const basePath = window.location.pathname.endsWith('/')
         ? window.location.pathname
         : window.location.pathname.substring(
@@ -221,7 +250,6 @@ window.navigateBrowser = async function(container, toUrl, addToHistory = true) {
 
     let url = toUrl.startsWith("/") ? toUrl : "/" + toUrl;
 
-    // Prepend basePath if not already present
     if (basePath !== '/' && !url.startsWith(basePath)) {
         url = basePath.replace(/\/$/, '') + url;
     }

@@ -27,6 +27,7 @@ export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)/main
 export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)/Zend
 export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)/TSRM
 export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)/ext/standard
+export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)/ext/pcre/pcre2lib
 export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)
 ########################################################################
 # Public, but unlikely to want to set these
@@ -43,6 +44,8 @@ export EM_MK_DIR   = $(EM_ROOT_DIR)/mk
 ########################################################################
 # Private, toolchain, not necessary to set any of this
 ########################################################################
+export RE2C=re2c
+export BISON=bison
 export CC=emcc
 export CXX=em++
 export AR=emar
@@ -222,7 +225,9 @@ $(EM_SRC_DIR)/dir.lo: $(EM_SRC_DIR)/dir.c $(EM_PHP_DIR)/.libs/libphp.a
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/dir.c -o $(EM_SRC_DIR)/dir.lo
 
-$(EM_SRC_DIR)/vfs.lo: $(EM_SRC_DIR)/vfs.c $(EM_SRC_DIR)/dir.lo $(EM_SRC_DIR)/node.lo $(EM_SRC_DIR)/path.lo $(EM_PHP_DIR)/.libs/libphp.a
+$(EM_SRC_DIR)/vfs.lo: $(EM_SRC_DIR)/vfs.c \
+	$(EM_SRC_DIR)/dir.lo $(EM_SRC_DIR)/node.lo \
+	$(EM_SRC_DIR)/path.lo $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/vfs.c -o $(EM_SRC_DIR)/vfs.lo
@@ -237,7 +242,12 @@ $(EM_SRC_DIR)/buffer.lo: $(EM_SRC_DIR)/buffer.c $(EM_SRC_DIR)/vfs.lo
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/buffer.c -o $(EM_SRC_DIR)/buffer.lo
 
-$(EM_SRC_DIR)/dispatch.lo: $(EM_SRC_DIR)/dispatch.c $(EM_SRC_DIR)/buffer.lo
+$(EM_SRC_DIR)/mutators.lo: $(EM_SRC_DIR)/mutators.c $(EM_SRC_DIR)/buffer.lo
+	$(LIBTOOL) --silent --mode=compile --tag=CC \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
+			-c $(EM_SRC_DIR)/mutators.c -o $(EM_SRC_DIR)/mutators.lo
+
+$(EM_SRC_DIR)/dispatch.lo: $(EM_SRC_DIR)/dispatch.c $(EM_SRC_DIR)/mutators.lo
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/dispatch.c -o $(EM_SRC_DIR)/dispatch.lo
@@ -271,6 +281,7 @@ bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_RULES) $(EM_RECIPE_LINK_OBJECTS) $(EM
 		$(EM_SRC_DIR)/iterator.o \
 		$(EM_SRC_DIR)/buffer.o \
 		$(EM_SRC_DIR)/dispatch.o \
+		$(EM_SRC_DIR)/mutators.o \
 		$(EM_SRC_DIR)/api.o
 	@ls -lash $(EM_ROOT_DIR)/php-em.js $(EM_ROOT_DIR)/php-em.wasm
 

@@ -16,35 +16,14 @@
   +----------------------------------------------------------------------+
  */
 
-#ifndef HAVE_EM_BUFFER
-#define HAVE_EM_BUFFER
-#include <emscripten.h>
+#ifndef HAVE_EM_MUTATORS
+#define HAVE_EM_MUTATORS
 
-#include <php.h>
+#include "dispatch.h"
+#include "buffer.h"
 
-typedef struct _em_buffer_t {
-    char* value;
-    size_t length;
-    size_t max;
-    size_t position;
-    char*  token;
-} em_buffer_t;
+bool em_mutators_mutate(em_dispatch_context_t* context);
 
-#define EM_BUFFER_EMPTY (em_buffer_t) {NULL, 0, 0, 0}
-
-size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len);
-
-void em_buffer_clear(em_buffer_t* buffer, bool _free);
-
-static zend_always_inline size_t em_buffer_join(
-  em_buffer_t* buffer, em_buffer_t* head, em_buffer_t* body) {
-  em_buffer_clear(buffer, false);
-  em_buffer_write(
-    buffer, head->value, head->length);
-  em_buffer_write(
-    buffer, body->value, body->length);
-
-  buffer->value[buffer->length] = 0;
-  return buffer->length;
-}
+void em_mutators_activate(void);
+void em_mutators_deactivate(void);
 #endif

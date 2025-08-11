@@ -18,12 +18,11 @@
 
 #include "dispatch.h"
 #include "vfs.h"
-#include "buffer.h"
 #include "api.h"
+#include "mutators.h"
 
 #include <php_variables.h>
 
-#include <ext/standard/base64.h>
 #include <ext/standard/php_var.h>
 #include <ext/json/php_json.h>
 
@@ -65,11 +64,18 @@ static zend_always_inline const char* em_dispatch_mime(sapi_request_info* info, 
         return fallback;
     }
 
-    if (strcmp(extension, ".css") == SUCCESS) {
-        return "text/css; charset=UTF-8";
-    } else if (strcmp(extension, ".html") == SUCCESS ||
-               strcmp(extension, ".htm")  == SUCCESS) {
+    /* TODO(krakjoe) more mime */
+    if (       strcmp(extension, ".html") == SUCCESS  ||
+               strcmp(extension, ".htm")  == SUCCESS  ||
+               strcmp(extension, ".md")   == SUCCESS  ||
+               strcmp(extension, ".txt")  == SUCCESS) {
         return "text/html; charset=UTF-8";
+    } else if (strcmp(extension, ".js")   == SUCCESS  ||
+               strcmp(extension, ".mjs")  == SUCCESS  ||
+               strcmp(extension, ".wasm") == SUCCESS) {
+        return "application/javascript; charset=UTF-8";
+    } else if (strcmp(extension, ".css") == SUCCESS) {
+        return "text/css; charset=UTF-8";
     }
 
     return fallback;
@@ -84,15 +90,83 @@ typedef struct _em_dispatch_t {
 } em_dispatch_t;
 
 void em_dispatch_header(const char* format, ...) {
+    em_dispatch_context_t* context = SG(server_context);
+
     va_list args;
     va_start(args, format);
     sapi_header_line header;
 
     header.line_len = vspprintf(
-        (char **) &(header.line), 0,
-        format, args);
-    sapi_header_op(
-        SAPI_HEADER_REPLACE, (void*) &header);
+            (char **) &(header.line), 0,
+            format, args);
+
+    if (!SG(headers_sent)) {
+        sapi_header_op(
+            SAPI_HEADER_REPLACE, (void*) &header);
+    } else if (context->buffers.response.head.length) {
+        /**
+         * We must allow very late editing of the response
+         * header to accomodate mutation.
+         * 
+         * The sapi may or may not think the headers have been
+         * sent at call time, its safe to ignore if they have
+         * been sent, since sending doesn't exist we can edit
+         * the buffer until its joined with head on return to
+         * javascript.
+         */
+        const char* name = strchr(header.line, ':');
+
+        if (name) {
+            char *search =
+                malloc((name - header.line) + 1);
+            memcpy(search,
+                header.line, name - header.line);
+            search[(name - header.line)] = 0;
+
+            char *line = strcasestr(
+                context->buffers.response.head.value, search);
+            if (line) {
+                // Find the end of the header line (\r\n)
+                char *end = strstr(line, "\r\n");
+
+                if (end) {
+                    size_t blength =
+                        line - context->buffers.response.head.value;
+                    size_t offset =
+                        (end + 2) - context->buffers.response.head.value;
+                    size_t alength =
+                        context->buffers.response.head.length - offset;
+                    size_t length = strlen(header.line);
+
+                    // Allocate new buffer for the header block
+                    size_t nlength = blength + length + 2 + alength;
+                    char *nbuffer = emalloc(nlength + 1);
+
+                    // Copy up to the start of the line
+                    memcpy(nbuffer,
+                        context->buffers.response.head.value,
+                        blength);
+                    // Copy the new header line
+                    memcpy(nbuffer + blength,
+                        header.line, 
+                        length);
+                    // Copy CRLF
+                    memcpy(nbuffer + blength + length, "\r\n", 2);
+                    // Copy the rest of the buffer
+                    memcpy(nbuffer + blength + length + 2,
+                        context->buffers.response.head.value + offset,
+                        alength);
+                    nbuffer[nlength] = '\0';
+
+                    em_buffer_clear(&context->buffers.response.head, true);
+                    em_buffer_write(&context->buffers.response.head, nbuffer, nlength);
+                    efree(nbuffer);
+                }
+            }
+            free(search);
+        }
+    }
+
     efree((void*)header.line);
 
     va_end(args);
@@ -135,16 +209,12 @@ static zend_always_inline void em_dispatch_context_destroy(em_dispatch_context_t
 
     em_buffer_clear(&context->buffers.response.head, true);
     em_buffer_clear(&context->buffers.response.body, true);
+    em_buffer_clear(&context->buffers.response.join, true);
 
     zend_llist_destroy(&context->headers.response);
     zend_llist_destroy(&context->headers.request);
     zend_hash_destroy(&context->environ);
 
-    efree(context->info->request_uri);
-    if (context->info->content_type) {
-        efree(context->info->content_type);
-    }
- 
     pefree(context, 1);
 }
 
@@ -219,6 +289,16 @@ static em_dispatch_context_t*
         sapi_request_info* info) {
     em_dispatch_context_t* context =
         pecalloc(1, sizeof(em_dispatch_context_t), 1);
+    memset(context, 0, sizeof(em_dispatch_context_t));
+
+    em_buffer_clear(&context->buffers.response.head, false);
+    em_buffer_clear(&context->buffers.response.body, false);
+    em_buffer_clear(&context->buffers.response.join, false);
+
+    em_buffer_clear(
+        &context->buffers.request.head, false);
+    em_buffer_clear(
+        &context->buffers.request.body, false);
 
     zend_llist_init(
         &context->headers.request,
@@ -251,6 +331,11 @@ static em_dispatch_context_t*
         const char* body, size_t blen) {
     em_dispatch_context_t* context =
         pecalloc(1, sizeof(em_dispatch_context_t), 1);
+    memset(context, 0, sizeof(em_dispatch_context_t));
+
+    em_buffer_clear(&context->buffers.response.head, false);
+    em_buffer_clear(&context->buffers.response.body, false);
+    em_buffer_clear(&context->buffers.response.join, false);
 
     em_buffer_write(
         &context->buffers.request.head, head, hlen);
@@ -433,43 +518,52 @@ em_dispatch_handler_t em_dispatch_setup(
         }
     }
 
-    /** check environment for things that effect paths */
-
     zval* vroot = zend_hash_str_find(
         &context->environ, ZEND_STRL("VIRTUAL_ROOT"));
-    zval* droot = zend_hash_str_find(
-        &context->environ, ZEND_STRL("DOCUMENT_ROOT"));
 
-    /* strip virtual root from translated path */
-    if (vroot && Z_TYPE_P(vroot) == IS_STRING && info->path_translated) {
-        size_t vroot_len = Z_STRLEN_P(vroot);
-        if (strncmp(info->path_translated, Z_STRVAL_P(vroot), vroot_len) == 0) {
-            size_t new_len = strlen(info->path_translated) - vroot_len;
-            char* new_path = emalloc(new_len + 1);
-            memcpy(new_path, info->path_translated + vroot_len, new_len);
-            new_path[new_len] = '\0';
+    if (vroot) {
+        size_t vlength = Z_STRLEN_P(vroot);
+        if (strncmp(info->path_translated,
+                Z_STRVAL_P(vroot), vlength) == SUCCESS) {
+            size_t length = strlen(
+                info->path_translated) - vlength;
+
+            char* path_translated = emalloc(length + 1);
+            memcpy(
+                path_translated,
+                info->path_translated +
+                    vlength, length);
+            path_translated[length] = '\0';
             efree(info->path_translated);
-            info->path_translated = new_path;
+            
+            info->path_translated = path_translated;
         }
     }
 
-    /* prepend document root to translated path */
-    if (droot && Z_TYPE_P(droot) == IS_STRING && info->path_translated) {
-        size_t droot_len = Z_STRLEN_P(droot);
-        size_t path_len = strlen(info->path_translated);
-        int need_slash = (droot_len && Z_STRVAL_P(droot)[droot_len-1] != '/' && path_len && info->path_translated[0] != '/');
-        size_t new_len = droot_len + need_slash + path_len;
-        char* new_path = emalloc(new_len + 1);
-        memcpy(new_path, Z_STRVAL_P(droot), droot_len);
-        if (need_slash) {
-            new_path[droot_len] = '/';
-            memcpy(new_path + droot_len + 1, info->path_translated, path_len);
+    zval* droot = zend_hash_str_find(
+        &context->environ, ZEND_STRL("DOCUMENT_ROOT"));
+
+    if (droot) {
+        size_t dlength = Z_STRLEN_P(droot);
+        size_t length  = strlen(info->path_translated);
+        int slashing   = ((dlength && Z_STRVAL_P(droot)[dlength-1] != '/') &&
+                          (length &&     info->path_translated[0]  != '/'));
+        size_t nlength = dlength + slashing + length;
+
+        char* path_translated = emalloc(nlength + 1);
+        memcpy(path_translated, Z_STRVAL_P(droot), dlength);
+        if (slashing) {
+            path_translated[dlength] = '/';
+            memcpy(path_translated + dlength + 1,
+                info->path_translated, length);
         } else {
-            memcpy(new_path + droot_len, info->path_translated, path_len);
+            memcpy(path_translated + dlength,
+                info->path_translated, length);
         }
-        new_path[new_len] = '\0';
+        path_translated[nlength] = '\0';
         efree(info->path_translated);
-        info->path_translated = new_path;
+
+        info->path_translated = path_translated;
     }
 
     const char* address = em_vfs_get_address(info->path_translated);
@@ -507,18 +601,14 @@ em_dispatch_handler_t em_dispatch_setup(
     return em_dispatch_select(info->content_type, info);
 }
 
-void em_dispatch_response(int code, const char* status, const char* mime) {
-    SG(sapi_headers).http_response_code = code;
-    if (SG(sapi_headers).http_status_line) {
-        efree(SG(sapi_headers).http_status_line);
+size_t em_dispatch_response(em_dispatch_selector_t selected, const char* buffer, size_t length) {
+    em_dispatch_context_t* context = SG(server_context);
+    switch (selected) {
+        case EM_DISPATCH_HEAD:
+            return em_buffer_write(&context->buffers.response.head, buffer, length);
+        case EM_DISPATCH_BODY:
+            return em_buffer_write(&context->buffers.response.body, buffer, length);
     }
-    SG(sapi_headers).http_status_line =
-        status ? estrdup(status) : NULL;
-    if (SG(sapi_headers).mimetype) {
-        efree(SG(sapi_headers).mimetype);
-    }
-    SG(sapi_headers).mimetype =
-        mime ? estrdup(mime) : NULL;
 }
 
 void em_dispatch_cleanup(void) {
@@ -543,7 +633,8 @@ void em_dispatch_api(sapi_request_info* info) {
 }
 
 void em_dispatch_file(sapi_request_info* info) {
-    /* service path */
+    em_dispatch_context_t* context = SG(server_context);
+
     const char* address =
         em_vfs_get_address(info->path_translated);
 
@@ -566,42 +657,19 @@ void em_dispatch_file(sapi_request_info* info) {
             "application/octet-stream"));
     em_dispatch_header("Content-Length: %zu", length);
     em_dispatch_nocache();
-
-    sapi_send_headers();
-    em_buffer_response(address, length);
+    em_dispatch_response(
+        EM_DISPATCH_BODY, address, length);
+    em_mutators_mutate(context);
 }
 
 void em_dispatch_script(sapi_request_info* info) {
-    em_buffer_t store = EM_BUFFER_EMPTY, load = EM_BUFFER_EMPTY;
-
-    /*
-        compile into a new buffer so we don't pollute output
-        buffer early, ie, before we know what headers to send
-    */
-    memcpy(&store,
-        &__em_response_buffer, sizeof(em_buffer_t));
-    memset(&__em_response_buffer, 0, sizeof(em_buffer_t));
-
+    em_dispatch_context_t* context = SG(server_context);
     zend_op_array* ops =
         em_compile_script(
             info->path_translated);
 
-    /*
-        put the old buffer back ...
-    */
-    memcpy(&load,
-        &__em_response_buffer, sizeof(em_buffer_t));
-    memcpy(&__em_response_buffer, &store, sizeof(em_buffer_t));
-
     if (!ops) {
-        /*
-            a bad thing has befallen the request!
-        */
         em_dispatch_exception(info);
-        sapi_send_headers();
-        em_buffer_response(
-            load.value, load.length);
-        em_buffer_clear(&load, true);
         return;
     }
 
@@ -609,41 +677,19 @@ void em_dispatch_script(sapi_request_info* info) {
         "Status: 200 OK");
     em_dispatch_nocache();
     em_execute(ops);
+    em_mutators_mutate(context);
 }
 
 void em_dispatch_code(sapi_request_info* info) {
     em_dispatch_context_t* context = SG(server_context);
-    em_buffer_t store = EM_BUFFER_EMPTY, load = EM_BUFFER_EMPTY;
-
-    /*
-        compile into a new buffer so we don't pollute output
-        buffer early, ie, before we know what headers to send
-    */
-    memcpy(&store,
-        &__em_response_buffer, sizeof(em_buffer_t));
-    memset(&__em_response_buffer, 0, sizeof(em_buffer_t));
 
     zend_op_array* ops =
         em_compile_string(
             context->buffers.request.body.value,
             context->buffers.request.body.length);
 
-    /*
-        put the old buffer back ...
-    */
-    memcpy(&load,
-        &__em_response_buffer, sizeof(em_buffer_t));
-    memcpy(&__em_response_buffer, &store, sizeof(em_buffer_t));
-
     if (!ops) {
-        /*
-            a bad thing has befallen the request!
-        */
         em_dispatch_exception(info);
-        sapi_send_headers();
-        em_buffer_response(
-            load.value, load.length);
-        em_buffer_clear(&load, true);
         return;
     }
 
@@ -651,6 +697,7 @@ void em_dispatch_code(sapi_request_info* info) {
         "Status: 200 OK");
     em_dispatch_nocache();
     em_execute(ops);
+    em_mutators_mutate(context);
 }
 
 em_dispatch_t __em_dispatch_table__[] = {

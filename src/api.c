@@ -34,6 +34,7 @@
 #include "api.h"
 #include "dispatch.h"
 #include "buffer.h"
+#include "mutators.h"
 
 extern sapi_module_struct em_sapi_module;
 
@@ -90,7 +91,7 @@ void em_buffer_log(const char* message, int type) {
         message
     );
 
-    em_buffer_response(ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_dispatch_response(EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 
@@ -102,7 +103,7 @@ void em_buffer_error(int type, const char* file, const uint32_t lineno, zend_str
         lineno,
         ZSTR_VAL(message)
     );
-    em_buffer_response(ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_dispatch_response(EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 #else
@@ -113,7 +114,7 @@ void em_buffer_error(int type, zend_string* file, const uint32_t lineno, zend_st
         lineno,
         ZSTR_VAL(message)
     );
-    em_buffer_response(ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_dispatch_response(EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 #endif /* }}} */
@@ -131,10 +132,16 @@ static zend_always_inline zend_result
     SG(headers_sent)            = !headers;
     SG(request_info).no_headers = !headers;
 
+    if (headers) {
+        /* alway set a valid status code for response
+            in case the system goes down during startup */
+        SG(sapi_headers).http_response_code = 200;
+        SG(sapi_headers).http_status_line   = estrdup("OK");
+    }
+
+    em_mutators_activate();
     em_http_activate();
     em_vfs_activate();
-
-    em_buffer_clear(&__em_response_buffer, false);
 
     zend_compile_func = zend_compile_file;
     zend_compile_file = em_compile_file;
@@ -241,6 +248,7 @@ void em_execute(zend_op_array* ops) {
 static zend_always_inline void em_deactivate(void) {
     em_vfs_deactivate();
     em_http_deactivate();
+    em_mutators_deactivate();
 
     php_request_shutdown((void*) NULL);
 
@@ -283,7 +291,7 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     zend_log_func   = sapi_module.log_message;
     zend_write_func = sapi_module.ub_write;
 
-    sapi_module.ub_write    = em_buffer_response;
+    sapi_module.ub_write    = em_dispatch_writer;
     sapi_module.log_message = em_buffer_log;
 
     em_dispatch_startup();
@@ -310,32 +318,40 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(const char* code, size_t length) {
     sapi_request_info* info = &SG(request_info);
     em_dispatch_handler_t em_dispatch_request =
         em_dispatch_setup_code(info, code, length);
+    em_dispatch_context_t* context = SG(server_context);
 
     if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
     em_dispatch_request(info);
-    em_dispatch_cleanup();
     em_deactivate();
 
-    return (uintptr_t) __em_response_buffer.value;
+    em_buffer_join(&context->buffers.response.join,
+        &context->buffers.response.head,
+        &context->buffers.response.body);
+
+    return (uintptr_t) context->buffers.response.join.value;
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_script(const char* script) {
     sapi_request_info* info = &SG(request_info);
     em_dispatch_handler_t em_dispatch_request =
         em_dispatch_setup_script(info, script);
+    em_dispatch_context_t* context = SG(server_context);
 
     if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
     em_dispatch_request(info);
-    em_dispatch_cleanup();
     em_deactivate();
 
-    return (uintptr_t) __em_response_buffer.value;
+    em_buffer_join(&context->buffers.response.join,
+        &context->buffers.response.head,
+        &context->buffers.response.body);
+
+    return (uintptr_t) context->buffers.response.join.value;
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
@@ -349,24 +365,30 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
             env,  elen,
             head, hlen,
             body, blen);
+    em_dispatch_context_t* context = SG(server_context);
 
     if (em_activate(true) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
     em_dispatch_request(info);
-    em_dispatch_cleanup();
     em_deactivate();
 
-    return (uintptr_t) __em_response_buffer.value;
+    em_buffer_join(&context->buffers.response.join,
+        &context->buffers.response.head,
+        &context->buffers.response.body);
+
+    return (uintptr_t) context->buffers.response.join.value;
 }
 
 size_t EMSCRIPTEN_KEEPALIVE em_run_length(void) {
-    return __em_response_buffer.length;
+    em_dispatch_context_t* context = 
+        SG(server_context);
+    return context->buffers.response.join.length;
 }
 
 void EMSCRIPTEN_KEEPALIVE em_run_free(void) {
-    em_buffer_clear(&__em_response_buffer, true);
+    em_dispatch_cleanup();
 }
 
 void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
@@ -449,27 +471,33 @@ static char* em_sapi_cookies(void)
 }
 
 static size_t em_sapi_post(char* buffer, size_t length) {
-    if (!__em_request_buffer.length) {
+    em_dispatch_context_t* context = SG(server_context);
+
+    if (!context->buffers.request.body.length) {
         /* nothing buffered */
         return 0;
     }
 
-    if (__em_request_buffer.position == __em_request_buffer.length) {
+    if (context->buffers.request.body.position ==
+        context->buffers.request.body.length) {
         /* empty buffer */
         return 0;
     }
 
     /* grab a chunk of buffer */
     size_t chunk =
-        length > (__em_request_buffer.length - __em_request_buffer.position) ?
-            (__em_request_buffer.length - __em_request_buffer.position) :
-                length;
+        length > (context->buffers.request.body.length -
+                  context->buffers.request.body.position) ?
+            (context->buffers.request.body.length -
+             context->buffers.request.body.position) :
+        length;
 
     memcpy(buffer,
-        __em_request_buffer.value + __em_request_buffer.position,
+        context->buffers.request.body.value +
+        context->buffers.request.body.position,
         chunk);
 
-    __em_request_buffer.position += chunk;
+    context->buffers.request.body.position += chunk;
 
     return chunk;
 }
@@ -509,20 +537,20 @@ static int em_sapi_headers(sapi_headers_struct* all) {
             strchr(status->header, ':');
 
         if (http) {
-            em_buffer_response(ZEND_STRL("HTTP/1.0"));
-            em_buffer_response(http + 1, strlen(http + 1));
+            em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("HTTP/1.0"));
+            em_dispatch_response(EM_DISPATCH_HEAD, http + 1, strlen(http + 1));
         } else {
-            em_buffer_response(status->header, status->header_len);
+            em_dispatch_response(EM_DISPATCH_HEAD, status->header, status->header_len);
         }
 
-        em_buffer_response(ZEND_STRL("\r\n"));
+        em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
     } else {
         char buffer[4096];
         snprintf(buffer, 4096,
             "HTTP/1.0 %d %s",
             all->http_response_code, all->http_status_line);
-        em_buffer_response(buffer, strlen(buffer));
-        em_buffer_response(ZEND_STRL("\r\n"));
+        em_dispatch_response(EM_DISPATCH_HEAD, buffer, strlen(buffer));
+        em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
     }
     
     /* send remainder of headers */
@@ -536,12 +564,12 @@ static int em_sapi_headers(sapi_headers_struct* all) {
             continue;
         }
 
-        em_buffer_response(next->header, next->header_len);
-        em_buffer_response(ZEND_STRL("\r\n"));
+        em_dispatch_response(EM_DISPATCH_HEAD, next->header, next->header_len);
+        em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
     } while ((next = zend_llist_get_next_ex(&all->headers, &position)));
 
 __em_sapi_headers_leave:
-    em_buffer_response(ZEND_STRL("\r\n"));
+    em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
 
     return SAPI_HEADER_SENT_SUCCESSFULLY;
 }
@@ -571,6 +599,11 @@ static void em_sapi_server(zval *vars)
     if (SG(request_info).request_method) {
         php_register_variable("REQUEST_METHOD",
             (char*)SG(request_info).request_method, vars);
+    }
+
+    if (SG(request_info).request_uri) {
+        php_register_variable("REQUEST_URI",
+            (char*)SG(request_info).request_uri, vars);
     }
 
     if (SG(request_info).path_translated) {

@@ -1,8 +1,26 @@
 const encoder = new TextEncoder("utf-8");
 const pending = new Map();
-let   uuid    = null;
-let   auth    = false;
-let   boot    = null;
+
+let auth = false;
+let boot = null;
+
+const channel = new BroadcastChannel('em-browser');
+
+channel.addEventListener('message', (event) => {
+    if (event.data.type === 'CLIENT_RESPONSE') {
+        console.log(
+            '[worker] Responding', 
+            event.data);
+        const resolve = pending.get(event.data.id);
+        if (resolve) {
+            pending.delete(event.data.id);
+            resolve(event.data);
+        } else {
+            console.warn('[worker] Nothing Pending',
+                event.data.id);
+        }
+    }
+});
 
 async function resolveResponse(promise, event) {
     const result = await promise;
@@ -35,58 +53,48 @@ self.addEventListener('fetch', event => {
 
     if (url.origin != self.location.origin) {
         /* only respond to fetches with the same origin */
-        console.log("cross origin");
         return;
     }
 
     if (!auth) {
-        /* not yet authorizaed to make requests */
-        console.log("no auth");
+        /* not yet authorized to make requests */
         return;
     }
 
     event.respondWith((async () => {
-        const id = Math.random().toString();
-        const promise = new Promise(
-            resolve => pending.set(id, resolve));
-        const clients = await self.clients
-            .matchAll({ includeUncontrolled: true });
-            console.log(clients);
-        if (clients.length == 0) {
-            return fetch(event.request);
-        }
+        const id = crypto.randomUUID();
+        const promise = new Promise(resolve => pending.set(id, resolve));
 
-        let url = resolveResource(event.request.url);
+        let resourceUrl = resolveResource(event.request.url);
 
-        console.log(`rewrite ${event.request.url} -> ${url}`);
+        console.log(
+            `[worker] Intercepting ${event.request.url} -> ${resourceUrl}`);
 
-        let head =
-            `${event.request.method} ${url}\r\n`;
+        let head = `${event.request.method} ${resourceUrl}\r\n`;
         if (event.request.headers) {
             for (const [key, value] of event.request.headers.entries()) {
                 head += `${key}: ${value}\r\n`;
             }
         }
+
         head += '\r\n';
 
         const body = await event.request.arrayBuffer();
 
-        clients.forEach(client => {
-            client.postMessage({
-                type: 'CLIENT_REQUEST',
-                id:      id,
-                method:  event.request.method,
-                url:     event.request.url,
-                head:    encoder.encode(head).buffer,
-                body:    body,
-            });
-        })
+        channel.postMessage({
+            type: 'CLIENT_REQUEST',
+            id: id,
+            method: event.request.method,
+            url: event.request.url,
+            head: encoder.encode(head),
+            body: body,
+        });
 
         return resolveResponse(promise, event);
     })());
 });
 
-self.addEventListener('message', event => {
+self.addEventListener('message', event => {    
     switch (event.data.type) {
         case 'SKIP_WAITING':
             self.skipWaiting();
@@ -98,30 +106,19 @@ self.addEventListener('message', event => {
 
         case 'CLIENT_INIT':
             /* allow boot code to run */
-            console.log("Initializing ");
+            console.log(
+                "[worker] Initializing");
             boot = event.data.boot;
             auth = false;
-            uuid = null;
-            /* Send CLIENT_INIT_ACK to client */
             event.source.postMessage(
                 { type: 'CLIENT_INIT_ACK' });
             return;
 
         case 'CLIENT_IDENT':
-            /* start forwarding requests for this client */
-            console.log("Hello", 
-                event.data.uuid);
-            uuid  = event.data.uuid;
-            auth  = true;
+            /* authorize requests */
+            console.log(
+                "[worker] Dispatching");
+            auth = true;
             return;
-
-        case 'CLIENT_RESPONSE':
-            const resolve = pending.get(event.data.id);
-            if (resolve) {
-                pending.delete(
-                    event.data.id);
-                resolve(event.data);
-            }
-        break;
     }
 });

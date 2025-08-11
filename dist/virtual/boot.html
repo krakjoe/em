@@ -3,10 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <title>Virtual Browser Boot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 800px;
+            padding: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .php-logo {
+            margin-bottom: 2rem;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            color: white;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+            color: #e8e8e8;
+        }
+
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 1rem 2rem;
+            margin: 2rem auto;
+            max-width: 400px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .status-text {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .browse-btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            margin-top: 1rem;
+            border: 2px solid transparent;
+        }
+
+        .browse-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            background: linear-gradient(45deg, #4ecdc4, #ff6b6b);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            margin-top: 3rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .feature {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .feature:hover {
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 1rem;
+            fill: #4ecdc4;
+        }
+
+        .background-shapes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0.1;
+        }
+
+        .shape {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            animation: drift 20s infinite linear;
+        }
+
+        .shape:nth-child(1) {
+            width: 100px;
+            height: 100px;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+
+        .shape:nth-child(2) {
+            width: 150px;
+            height: 150px;
+            top: 60%;
+            right: 10%;
+            animation-delay: 5s;
+        }
+
+        .shape:nth-child(3) {
+            width: 80px;
+            height: 80px;
+            bottom: 20%;
+            left: 30%;
+            animation-delay: 10s;
+        }
+
+        @keyframes drift {
+            0% { transform: translateX(0) translateY(0) rotate(0deg); }
+            25% { transform: translateX(100px) translateY(-100px) rotate(90deg); }
+            50% { transform: translateX(200px) translateY(0) rotate(180deg); }
+            75% { transform: translateX(100px) translateY(100px) rotate(270deg); }
+            100% { transform: translateX(0) translateY(0) rotate(360deg); }
+        }
+
+        .loading-dots {
+            display: inline-block;
+        }
+
+        .loading-dots::after {
+            content: '';
+            animation: dots 2s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+    </style>
     <script>
     window.addEventListener('message', async (event) => 
     {
-        if (!event.data) return;
+        if (!event.data) {
+            return;
+        }
+
         if (event.data.type === "CLIENT_INIT") {
             if ('serviceWorker' in navigator) {
                 try {
@@ -14,16 +200,14 @@
                     if (!registrations.some(registered => {
                         return registered.scope.endsWith(event.data.vroot);
                     })) {
-                        window.parent.updateStatus(
-                            "Registering service worker for browesr");
+                        updateStatus("[boot] Registering service worker");
 
                         try {
                             const registration = await navigator.serviceWorker
                                 .register(event.data.worker, 
                                 { scope: event.data.vroot });
 
-                            window.parent.updateStatus(
-                                "Registration of service worker complete");
+                            updateStatus("[boot] Service worker registered");
 
                             if (registration.waiting)
                                 registration.waiting
@@ -41,15 +225,14 @@
                                 });
                             }
 
-                            window.parent.updateStatus(
-                                "Service worker initialized for browser");
+                            updateStatus("[boot] Virtual browser ready!");
+                            document.getElementById('browseBtn').style.display = 'inline-block';
                         } catch (e) {
-                            window.parent.updateStatus(
-                                "Service worker initialization failed, please check configuration", "error");
+                            updateStatus("[boot] Registration failed, check configuration", "error");
                         }
                     } else {
-                        window.parent.updateStatus(
-                            "Welcome back, reinitializing service worker for browser");
+                        updateStatus("[boot] Welcome back! Virtual browser ready.");
+                        document.getElementById('browseBtn').style.display = 'inline-block';
                     }
 
                     if (navigator.serviceWorker.controller) {
@@ -57,9 +240,8 @@
                             .postMessage(event.data);
                     }
                 } catch (e) {
-                    window.parent.updateStatus(
-                        "Failed to boot virtual browser, see console", "error");
-                    console.error('Failed to boot virtual browser', e);
+                    updateStatus("[boot] Exception occurred, see console for details", "error");
+                    console.error('[boot] Exception', e);
                 }
             }
         } else {
@@ -78,4 +260,68 @@
             await window.parent.postMessage(event.data, '*');
         }
     });
+
+    function updateStatus(message, type = 'info') {
+        const statusEl = document.getElementById('statusText');
+        if (statusEl) {
+            statusEl.textContent = message;
+            if (type === 'error') {
+                statusEl.style.color = '#ff6b6b';
+            } else {
+                statusEl.style.color = '#4ecdc4';
+            }
+        }
+        
+        // Also update parent if available
+        if (window.parent && window.parent.updateStatus) {
+            window.parent.updateStatus(message, type);
+        }
+    }
     </script>
+</head>
+<body>
+    <div class="background-shapes">
+        <div class="shape"></div>
+        <div class="shape"></div>
+        <div class="shape"></div>
+    </div>
+
+    <div class="container">
+        <div class="php-logo">
+            <svg width="120" height="80" viewBox="0 0 711 400" xmlns="http://www.w3.org/2000/svg">
+                <g fill="#fff">
+                    <path d="M355.5 0C159.3 0 0 89.5 0 200s159.3 200 355.5 200S711 310.5 711 200 551.7 0 355.5 0zm0 340c-77.1 0-139.5-62.4-139.5-140s62.4-140 139.5-140S495 122.9 495 200s-62.4 140-139.5 140z"/>
+                    <path d="M74.8 149.5c-11.2 0-20.2 9-20.2 20.2s9 20.2 20.2 20.2 20.2-9 20.2-20.2-9-20.2-20.2-20.2zm0 30.4c-5.6 0-10.2-4.5-10.2-10.2s4.5-10.2 10.2-10.2 10.2 4.5 10.2 10.2-4.6 10.2-10.2 10.2z"/>
+                    <path d="M130.8 120.5h-15.7c-2.8 0-5.1 2.3-5.1 5.1v89.8c0 2.8 2.3 5.1 5.1 5.1h15.7c14.2 0 25.7-11.5 25.7-25.7v-38.6c0-14.2-11.5-25.7-25.7-25.7zm15.7 64.3c0 8.6-7 15.7-15.7 15.7h-10.6v-79.8h10.6c8.6 0 15.7 7 15.7 15.7v38.4z"/>
+                    <path d="M235.8 120.5h-15.7c-2.8 0-5.1 2.3-5.1 5.1v35.6h-20.4v-35.6c0-2.8-2.3-5.1-5.1-5.1H174c-2.8 0-5.1 2.3-5.1 5.1v89.8c0 2.8 2.3 5.1 5.1 5.1h15.5c2.8 0 5.1-2.3 5.1-5.1v-44.1H215v44.1c0 2.8 2.3 5.1 5.1 5.1h15.7c2.8 0 5.1-2.3 5.1-5.1v-89.8c-.1-2.8-2.4-5.1-5.1-5.1z"/>
+                    <path d="M310.8 149.5h-25.7c-2.8 0-5.1 2.3-5.1 5.1v60.8c0 2.8 2.3 5.1 5.1 5.1h15.5c2.8 0 5.1-2.3 5.1-5.1v-20.4h10.2c14.2 0 25.7-11.5 25.7-25.7s-11.5-25.8-25.8-25.8zm10.2 25.7c0 5.6-4.5 10.2-10.2 10.2h-10.2v-20.4h10.2c5.6 0 10.2 4.6 10.2 10.2z"/>
+                </g>
+            </svg>
+        </div>
+        
+        <h1 class="title">PHP Virtual Browser</h1>
+        
+        <a href="./" class="browse-btn" id="browseBtn">
+            🚀 Start Browsing
+        </a>
+        
+        <div class="features">
+            <div class="feature">
+                <svg class="feature-icon" viewBox="0 0 24 24">
+                    <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0L19.2 12l-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
+                </svg>
+                <h3>Live Coding</h3>
+                <p>Instant code execution and real-time preview</p>
+            </div>
+            
+            <div class="feature">
+                <svg class="feature-icon" viewBox="0 0 24 24">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H6v-2h6v2zm4-4H6v-2h10v2zm0-4H6V7h10v2z"/>
+                </svg>
+                <h3>Virtual Files</h3>
+                <p>Complete file system simulation in your browser</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
