@@ -119,3 +119,58 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  electron-build:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Download all PHP artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          
+      - name: Organize PHP builds for Electron
+        run: |
+          mkdir -p dist/latest
+          
+          # Process each PHP version
+          for version in "PHP-8.0" "PHP-8.1" "PHP-8.2" "PHP-8.3" "PHP-8.4" "master"; do
+            if [ "$version" = "master" ]; then
+              clean_version="master"
+            else
+              clean_version=$(echo $version | sed 's/PHP-//')
+            fi
+            
+            echo "Processing $version -> $clean_version"
+            mkdir -p dist/latest/$clean_version
+            
+            if [ -d "artifacts/${version}-em" ]; then
+              cp artifacts/${version}-em/php-em.js dist/latest/$clean_version/
+              cp artifacts/${version}-em/php-em.wasm dist/latest/$clean_version/
+            fi
+          done
+        shell: bash
+      
+      - name: Build Electron app
+        run: npm run dist
+        
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ matrix.os }}
+          path: /tmp/em/

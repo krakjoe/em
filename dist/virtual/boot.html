@@ -201,7 +201,7 @@
                         return registered.scope.endsWith(event.data.vroot);
                     })) {
                         updateStatus("[boot] Registering service worker");
-
+                        
                         try {
                             const registration = await navigator.serviceWorker
                                 .register(event.data.worker, 

@@ -42,6 +42,8 @@ html/
 *.gcda
 *.gcno
 *.gcov
+dist/node_modules
+dist/package-lock.json
 dist/php-em.js
 dist/php-em.wasm
 

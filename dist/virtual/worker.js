@@ -1,26 +1,9 @@
 const encoder = new TextEncoder("utf-8");
 const pending = new Map();
 
-let auth = false;
 let boot = null;
-
-const channel = new BroadcastChannel('em-browser');
-
-channel.addEventListener('message', (event) => {
-    if (event.data.type === 'CLIENT_RESPONSE') {
-        console.log(
-            '[worker] Responding', 
-            event.data);
-        const resolve = pending.get(event.data.id);
-        if (resolve) {
-            pending.delete(event.data.id);
-            resolve(event.data);
-        } else {
-            console.warn('[worker] Nothing Pending',
-                event.data.id);
-        }
-    }
-});
+let channel = null;
+let uuid = null;
 
 async function resolveResponse(promise, event) {
     const result = await promise;
@@ -46,48 +29,51 @@ function resolveResource(url) {
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url, self.location.url);
 
-    if (url.pathname.endsWith(boot)) {
-        /* let boot code pass */
-        return;
-    }
-
     if (url.origin != self.location.origin) {
         /* only respond to fetches with the same origin */
         return;
     }
 
-    if (!auth) {
-        /* not yet authorized to make requests */
+    if (!channel) {
+        console.warn(
+            `[worker] Nobody Listening`);
+        /* nobody to communicate with */
+        return;
+    }
+
+    if (url.pathname.endsWith(boot)) {
+        console.warn(
+            `[worker:${uuid}] Boot Pass`);
         return;
     }
 
     event.respondWith((async () => {
         const id = crypto.randomUUID();
-        const promise = new Promise(resolve => pending.set(id, resolve));
-
-        let resourceUrl = resolveResource(event.request.url);
+        const promise = new Promise(
+            resolve => pending.set(id, resolve));
 
         console.log(
-            `[worker] Intercepting ${event.request.url} -> ${resourceUrl}`);
+            `[worker:${uuid}] Intercepting ${event.request.url}`);
 
+        let resourceUrl =
+            resolveResource(event.request.url);
         let head = `${event.request.method} ${resourceUrl}\r\n`;
         if (event.request.headers) {
             for (const [key, value] of event.request.headers.entries()) {
                 head += `${key}: ${value}\r\n`;
             }
         }
-
         head += '\r\n';
 
         const body = await event.request.arrayBuffer();
 
         channel.postMessage({
-            type: 'CLIENT_REQUEST',
-            id: id,
-            method: event.request.method,
-            url: event.request.url,
-            head: encoder.encode(head),
-            body: body,
+            type:    'CLIENT_REQUEST',
+            id:      id,
+            method:  event.request.method,
+            url:     event.request.url,
+            head:    encoder.encode(head),
+            body:    body,
         });
 
         return resolveResponse(promise, event);
@@ -105,20 +91,33 @@ self.addEventListener('message', event => {
             return;
 
         case 'CLIENT_INIT':
-            /* allow boot code to run */
-            console.log(
-                "[worker] Initializing");
             boot = event.data.boot;
-            auth = false;
-            event.source.postMessage(
-                { type: 'CLIENT_INIT_ACK' });
-            return;
-
-        case 'CLIENT_IDENT':
-            /* authorize requests */
+            uuid = event.data.uuid;
             console.log(
-                "[worker] Dispatching");
-            auth = true;
+                `[worker:${uuid}] Initializing`);
+            channel = new BroadcastChannel(
+                `em-browser:${uuid}`);
+            channel.addEventListener('message', (event) => {
+                if (event.data.type === 'CLIENT_RESPONSE') {
+                    console.log(
+                        `[worker:${uuid}] Responding ${event.data.url}`,
+                        event.data);
+                    const resolve = pending.get(event.data.id);
+                    if (resolve) {
+                        pending.delete(event.data.id);
+                        resolve(event.data);
+                    } else {
+                        console.warn(
+                            `[worker:${uuid}] Nothing Pending`);
+                    }
+                }
+            });
+            console.log(
+                `[worker:${uuid}] Acknowledging`);
+            channel.postMessage({ 
+                type: 'CLIENT_INIT_ACK',
+                uuid: uuid
+            });
             return;
     }
 });

@@ -20,7 +20,8 @@ class Browser {
         this.worker = worker;
         this.uuid   = crypto.randomUUID();
 
-        this.channel = new BroadcastChannel('em-browser');
+        this.channel = new BroadcastChannel(
+            `em-browser:${this.uuid}`);
         this.setupChannelListener();
 
         this.frame.addEventListener("load", function(){
@@ -29,38 +30,34 @@ class Browser {
                 vroot:  this.vroot,
                 boot:   this.boot,
                 worker: this.worker,
+                uuid:   this.uuid,
             }, '*');
         }.bind(this), { once: true });
 
         this.frame.src = this.boot;
-
-        window.addEventListener('message', async function(event) {
-            if (event.data && event.data.type === 'CLIENT_INIT_ACK') {
-                await this.frame.contentWindow.postMessage({
-                    type:  'CLIENT_IDENT',
-                    uuid:  this.uuid,
-                });
-                return;
-            }
-        }.bind(this));
     }
 
     setupChannelListener() {
-        this.channel.onmessage = (event) => {
-            if (event.data.type === 'CLIENT_REQUEST') {
-                
+        this.channel.onmessage = async (event) => {
+            if (event.data.type === 'CLIENT_INIT_ACK') {
+                console.log(`[browser:${this.uuid}] Ackowledged`);
+            } else if (event.data.type === 'CLIENT_REQUEST') {                
                 if (typeof Module == 'undefined' || !Module.ready) {
-                    console.log('[browser] Not Ready', event.data);
+                    console.error(
+                        `[browser:${this.uuid}] Not Ready for ${event.data.url}`, event.data);
                     return;
                 }
 
                 const url = new URL(event.data.url, window.location.origin);
                 if (url.origin != window.location.origin) {
-                    console.log("[browser] External Origin", event.data);
+                    console.warn(
+                        `[browser:${this.uuid}] External Origin ${event.data.url}`, event.data);
                     return;
                 }
 
-                console.log('[browser] Dispatching', event.data);
+                console.log(`[browser:${this.uuid}] Requesting ${event.data.url}`, event.data);
+                window.updateStatus(
+                    `Loading ${event.data.url}`)
                 try {
                     const response = Module.dispatch(
                         encoder.encode(JSON.stringify({
@@ -76,15 +73,23 @@ class Browser {
                                 new Uint8Array(),
                     );
 
-                    console.log("[browser] Responding", response);
+                    console.log(
+                        `[browser:${this.uuid}] Responding ${event.data.url}`, response);
                     this.channel.postMessage({
                         type: 'CLIENT_RESPONSE',
                         id: event.data.id,
-                        response: response
+                        url: event.data.url,
+                        response: response,
                     });
+                    window.updateStatus(
+                        `Finished Loading ${event.data.url}`,
+                        response.status.code == 200 ? 
+                            'success' : 'error');
                 } catch (error) {
-                    console.error('[browser] Exception Occured', error);
-
+                    console.error(
+                        `[browser:${this.uuid}] Exception Occured`, error);
+                    window.updateStatus(
+                        `Error Loading ${event.data.url}`, 'error');
                     this.channel.postMessage({
                         type: 'CLIENT_RESPONSE',
                         id: event.data.id,
@@ -93,7 +98,7 @@ class Browser {
                                 code: 500,
                                 text: 'Internal Server Error' 
                             },
-                            headers: { 
+                            headers: {
                                 'Content-Type': 'text/plain' 
                             },
                             body: new Uint8Array(
