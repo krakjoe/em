@@ -64,6 +64,9 @@ class Browser {
                 try {
                     const response = Module.dispatch(
                         encoder.encode(JSON.stringify({
+                            SERVER_HOSTNAME: window.location.hostname,
+                            SERVER_POST:     window.location.port ?
+                                                window.location.port : 80,
                             DOCUMENT_ROOT: this.droot,
                             VIRTUAL_ROOT:  this.vroot
                         })),
