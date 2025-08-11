@@ -167,7 +167,7 @@ jobs:
         shell: bash
       
       - name: Build Electron app
-        run: npm run dist
+        run: cd dist && npm run dist
         
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
