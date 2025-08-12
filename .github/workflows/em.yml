@@ -165,15 +165,22 @@ jobs:
             fi
           done
         shell: bash
-      
-      - name: Build Electron app
+
+      - name: Build Electron Application
         run: cd dist && npm run dist
-        
+
       - name: Cleanup Electron Artifacts
-        run: rm -rf /tmp/em/*-unpacked
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+              rm -rf /tmp/em/mac /tmp/em/mac-arm64
+            elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+              rm -rf /tmp/em/win-unpacked
+            elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+              rm -rf /tmp/em/linux-unpacked
+            fi
         shell: bash
 
-      - name: Upload Electron Build
+      - name: Upload Electron Application
         uses: actions/upload-artifact@v4
         with:
           name: electron-${{ matrix.os }}
