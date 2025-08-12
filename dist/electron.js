@@ -1,13 +1,13 @@
 
 const { app, BrowserWindow } = require('electron')
 const path = require('path')
-const express = require('express') // npm install express
+const express = require('express')
 
 let server;
 
 function startServer() {
   const serverApp = express()
-  serverApp.use(express.static('.')) // Serve current directory
+  serverApp.use(express.static(__dirname))
   
   server = serverApp.listen(0, 'localhost', () => {
     const port = server.address().port
