@@ -30,14 +30,12 @@ self.addEventListener('fetch', event => {
     const url = new URL(event.request.url, self.location.url);
 
     if (url.origin != self.location.origin) {
-        /* only respond to fetches with the same origin */
         return;
     }
 
     if (!channel) {
         console.warn(
             `[worker] Nobody Listening`);
-        /* nobody to communicate with */
         return;
     }
 
@@ -91,6 +89,12 @@ self.addEventListener('message', event => {
             return;
 
         case 'CLIENT_INIT':
+            if (channel !== null &&
+                channel.onmessage !== null) {
+                /* nothing to do */
+                return;
+            }
+
             boot = event.data.boot;
             uuid = event.data.uuid;
             console.log(

@@ -62,7 +62,7 @@ Module.response = function(address, length) {
     
     // Convert to text for header parsing
     const text = Module.iou.fromBytes(address, length);
-    
+
     let statusCode = 200;
     let statusText = 'OK';
     let headers = {};

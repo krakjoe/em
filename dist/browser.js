@@ -1,4 +1,5 @@
 const encoder = new TextEncoder("utf-8");
+const decoder = new TextDecoder("utf-8");
 
 window.browserTab = {
     type: 'browser',
@@ -32,7 +33,7 @@ class Browser {
                 worker: this.worker,
                 uuid:   this.uuid,
             }, '*');
-        }.bind(this), { once: true });
+        }.bind(this));
 
         this.frame.src = this.boot;
     }
@@ -102,7 +103,8 @@ class Browser {
                                 'Content-Type': 'text/plain' 
                             },
                             body: new Uint8Array(
-                                encoder.encode('Server Error'))
+                                encoder.encode(
+                                    `Server Error: ${error.message}`))
                         }
                     });
                 }
@@ -264,21 +266,34 @@ window.navigateBrowser = async function(container, toUrl, addToHistory = true) {
 
     const input = container
         .querySelector("#browser-url");
-    input.value = url;
-
-    if (addToHistory) {
-        window.browserTab.history =
-            window.browserTab.history.slice(
-                0, window.browserTab.historyIndex + 1);
-        window.browserTab.history.push(url);
-        window.browserTab.historyIndex =
-            window.browserTab.history.length - 1;
-    }
-
     const frame = container
         .querySelector(
             "#browser-frame");
-    frame.src = url;
+
+    frame.contentWindow.fetch(url).then(async (response) => {
+        if (response.status == 200 || response.status == 500) {
+            frame.src   = url;
+            input.value = url;
+
+            if (addToHistory) {
+                window.browserTab.history =
+                    window.browserTab.history.slice(
+                        0, window.browserTab.historyIndex + 1);
+                window.browserTab.history.push(url);
+                window.browserTab.historyIndex =
+                    window.browserTab.history.length - 1;
+            }
+        } else {
+            /* 400, maybe the worker went away, reboot, retry */
+            const location = frame.Browser.boot 
+                + `?retry=${encodeURIComponent(url)}&status=${response.status}`;
+            frame.src = location;
+            input.value = location;
+            const body = await
+                response.arrayBuffer();
+            window.updateStatus(decoder.decode(body));
+        }
+    });
 
     window.updateBrowserButtons(container);
 }

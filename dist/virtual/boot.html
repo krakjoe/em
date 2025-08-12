@@ -187,6 +187,41 @@
         }
     </style>
     <script>
+    window.addEventListener('DOMContentLoaded', (event) => {
+        const location = new URL(
+            window.location.href,
+            window.location.origin);
+        const browseBtn = document.getElementById('browseBtn');
+        if (location.searchParams.get('retry')) {
+            browseBtn.href =
+                decodeURIComponent(
+                    location.searchParams.get('retry'));
+            browseBtn.textContent =
+                browseBtn.textContent
+                    .replace('Start', 'Retry');;
+        }
+
+        if (location.searchParams.get('status')) {
+            const title = document.getElementById('title');
+            title.textContent =
+                `HTTP ${location.searchParams.get('status')}`
+        }
+
+        browseBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            const location = new URL(
+                browseBtn.href,
+                window.location.origin);
+            const browserContainer =
+                window.parent.document
+                    .getElementById('browser-container');
+            window.parent.navigateBrowser(
+                browserContainer,
+                location.pathname +
+                    encodeURIComponent(location.search), false);
+        });
+    });
+
     window.addEventListener('message', async (event) => 
     {
         if (!event.data) {
@@ -299,7 +334,7 @@
             </svg>
         </div>
         
-        <h1 class="title">PHP Virtual Browser</h1>
+        <h1 class="title" id="title">PHP Virtual Browser</h1>
         
         <a href="./" class="browse-btn" id="browseBtn">
             🚀 Start Browsing

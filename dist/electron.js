@@ -1,3 +1,4 @@
+
 const { app, BrowserWindow } = require('electron')
 const path = require('path')
 const express = require('express') // npm install express
@@ -13,9 +14,6 @@ function startServer() {
     createWindow(`http://localhost:${port}/`)
   })
 }
-
-app.commandLine.appendSwitch('--no-sandbox')
-app.commandLine.appendSwitch('--disable-setuid-sandbox')
 
 function createWindow(url) {
   const win = new BrowserWindow({

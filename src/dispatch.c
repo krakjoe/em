@@ -111,8 +111,7 @@ void em_dispatch_header(const char* format, ...) {
          * The sapi may or may not think the headers have been
          * sent at call time, its safe to ignore if they have
          * been sent, since sending doesn't exist we can edit
-         * the buffer until its joined with head on return to
-         * javascript.
+         * the buffer until its joined on return to javascript.
          */
         const char* name = strchr(header.line, ':');
 
@@ -474,7 +473,7 @@ em_dispatch_handler_t em_dispatch_setup(
     }
 
     info->request_method = estrdup(header->key.data);
-    
+
     if (header->value.data[0] != '/') {
         spprintf(
             &info->request_uri,
