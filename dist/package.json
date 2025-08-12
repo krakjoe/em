@@ -52,10 +52,10 @@
     }
   },
   "devDependencies": {
-    "electron": "^37.2.6",
-    "electron-builder": "^26.0.12"
+    "electron": "37.2.6",
+    "electron-builder": "26.0.12"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "5.1.0"
   }
 }

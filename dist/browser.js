@@ -289,9 +289,6 @@ window.navigateBrowser = async function(container, toUrl, addToHistory = true) {
                 + `?retry=${encodeURIComponent(url)}&status=${response.status}`;
             frame.src = location;
             input.value = location;
-            const body = await
-                response.arrayBuffer();
-            window.updateStatus(decoder.decode(body));
         }
     });
 
