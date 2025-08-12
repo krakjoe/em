@@ -4,7 +4,7 @@
   "main": "electron.js",
   "homepage": "https://github.com/krakjoe/em/",
   "scripts": {
-    "electron": "electron .",
+    "electron": "electron . --no-sandbox",
     "build": "electron-builder",
     "dist": "electron-builder --publish=never"
   },

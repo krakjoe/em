@@ -171,6 +171,7 @@ jobs:
         
       - name: Cleanup Electron Artifacts
         run: rm -rf /tmp/em/*-unpacked
+        shell: bash
 
       - name: Upload Electron Build
         uses: actions/upload-artifact@v4
