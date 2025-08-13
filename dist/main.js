@@ -1152,9 +1152,6 @@ function initializeGithubButton() {
 // Store GitHub token in localStorage
 let githubToken = localStorage.getItem('em-github-token') || '';
 
-
-
-
 // Progress bar logic
 let progressBar = null;
 function showProgressBar(label, max) {
@@ -1372,7 +1369,8 @@ async function initializeConfiguration() {
 
 function loadPHPRuntime() {
     updateStatus(`Loading PHP ${currentPHPVersion}...`, 'loading');
-    if (typeof editorStatus !== 'undefined' && editorStatus) editorStatus.textContent = 'Loading...';
+    if (typeof editorStatus !== 'undefined' && editorStatus)
+        editorStatus.textContent = 'Loading...';
     const script = document.createElement('script');
     script.src = `./latest/${currentPHPVersion}/php-em.js`;
     script.onload = () => {
@@ -1387,6 +1385,8 @@ function loadPHPRuntime() {
                 if (typeof newFileButton !== 'undefined' && newFileButton) newFileButton.disabled = false;
                 if (typeof newFolderButton !== 'undefined' && newFolderButton) newFolderButton.disabled = false;
                 if (typeof refreshFilesButton !== 'undefined' && refreshFilesButton) refreshFilesButton.disabled = false;
+                Module.addEventListener(
+                    "vfs.modified", refreshFileTree);
                 refreshFileTree();
             } else {
                 setTimeout(checkReady, 100);

@@ -18,8 +18,8 @@ function createWindow(url) {
             webSecurity: false,
             allowRunningInsecureContent: true,
             sandbox: false,
-            additionalArguments: ['--disable-web-security'],  // Add this
-            experimentalFeatures: true,  // Add this
+            additionalArguments: ['--disable-web-security'],
+            experimentalFeatures: true,
             preload: path.join(__dirname,
                 'electron.preload.js')
         }
@@ -28,7 +28,7 @@ function createWindow(url) {
         callback({
             responseHeaders: {
                 ...details.responseHeaders,
-                'Content-Security-Policy': ['*']  // Allow everything
+                'Content-Security-Policy': ['*']
             }
         })
     })
