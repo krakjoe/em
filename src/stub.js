@@ -40,8 +40,10 @@ Module.node = typeof process !== 'undefined' &&
  * Shall be true when executing under electron
  */
 Module.electron =
-    window.navigator.
-        userAgent.includes('Electron');
+    typeof window !== 'undefined' &&
+    typeof window.navigator !== 'undefined' &&
+        window.navigator.
+            userAgent.includes('Electron');
 
 /**
  * Shall startup (MINIT) em

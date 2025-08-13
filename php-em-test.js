@@ -134,7 +134,7 @@ class EmTestRunner {
 
                 this.Module = Module;
             } catch (error) {
-                console.error('Failed to load em module:', error.message);
+                console.error('Failed to load em module:', error);
                 process.exit(1);
             }
         }
