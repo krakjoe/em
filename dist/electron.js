@@ -3,6 +3,7 @@ const express = require('express')
 const { 
     app, BrowserWindow 
 } = require('electron')
+const path = require('path')
 
 let server;
 
@@ -12,11 +13,13 @@ function createWindow(url) {
         height: 800,
         show: false,
         webPreferences: {
-            nodeIntegration: false,
+            nodeIntegration: true,
             contextIsolation: true,
             webSecurity: false,
             allowRunningInsecureContent: true,
             sandbox: false,
+            preload: path.join(__dirname,
+                'electron.preload.js')
         }
     })
     win.webContents.once('did-finish-load', () => {

@@ -37,6 +37,13 @@ Module.node = typeof process !== 'undefined' &&
                      process.versions.node;
 
 /**
+ * Shall be true when executing under electron
+ */
+Module.electron =
+    window.navigator.
+        userAgent.includes('Electron');
+
+/**
  * Shall startup (MINIT) em
  * @returns bool
  */
@@ -1173,7 +1180,7 @@ Module.vfs = {
      */
     Persistence: class {
         hasFilesystem() {
-            return Module.node ||
+            return Module.node || Module.electron ||
                    ('storage' in navigator &&
                         'getDirectory' in navigator.storage) ||
                    ('indexedDB' in window);
@@ -1189,7 +1196,9 @@ Module.vfs = {
             this.tick = tick;
             this.path = path;
 
-            if (Module.node) {
+            if (Module.electron) {
+                this.fs = window.nodeFS;
+            } else if (Module.node) {
                 this.fs = require("fs");
             } else {
                 /* browser middleware only needs

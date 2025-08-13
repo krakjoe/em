@@ -3,11 +3,9 @@ let defaultVroot;
 if (window.navigator.userAgent.includes('Electron')) {
     // Electron environment
     defaultVroot = "/virtual/";
-    console.log("setting up for electron")
 } else if (window.location.hostname.includes("localhost")) {
     // Local development
     defaultVroot = "/dist/virtual/";
-    console.log("setting up for localhost");
 } else {
     // GitHub Pages or other hosting
     defaultVroot = "/em/virtual/";
