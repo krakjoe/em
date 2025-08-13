@@ -51,7 +51,6 @@ Download the desktop version for offline development:
 
 ### Prototyping & Testing
 - Quickly test PHP concepts and algorithms
-- Share code snippets with others via URL
 - Test across multiple PHP versions instantly
 
 ### Development & Debugging
