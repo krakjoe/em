@@ -38,9 +38,9 @@ No installation required - just click and start coding PHP instantly!
 ### 🖥️ **Desktop Application**
 Download the desktop version for offline development:
 
-- **Windows**: [Download from releases](https://nightly.link/krakjoe/em/workflows/em/develop/electron-windows-latest.zip)
-- **macOS**: [Download from releases](https://nightly.link/krakjoe/em/workflows/em/develop/electron-macos-latest.zip)  
-- **Linux**: [Download from releases](https://nightly.link/krakjoe/em/workflows/em/develop/electron-ubuntu-latest.zip)
+- [**Linux**](https://nightly.link/krakjoe/em/workflows/em/develop/electron-ubuntu-latest.zip)
+- [**macOS**](https://nightly.link/krakjoe/em/workflows/em/develop/electron-macos-latest.zip)
+- [**Windows**](https://nightly.link/krakjoe/em/workflows/em/develop/electron-windows-latest.zip)
 
 ## 🛠️ Use Cases
 
