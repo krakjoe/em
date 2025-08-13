@@ -40,8 +40,8 @@ Module.node = typeof process !== 'undefined' &&
  * Shall be true when executing under electron
  */
 Module.electron =
-    typeof window !== 'undefined' &&
-    typeof window.navigator !== 'undefined' &&
+    (typeof window !== 'undefined') &&
+    (typeof window.navigator !== 'undefined') &&
         window.navigator.
             userAgent.includes('Electron');
 
