@@ -56,6 +56,9 @@ EM_EXPORT_FUNCTIONS = [          \
 	"_em_vfs_iterator_reset",    \
 	"_em_vfs_iterator_next",     \
 	"_em_vfs_iterator_free",     \
+	"_em_vfs_memory_alloc",      \
+	"_em_vfs_memory_write",      \
+	"_em_vfs_memory_free",       \
 	"_malloc", "_free"           \
 ]
 define EM_EXPORT_ADD_FUNCTION

@@ -536,13 +536,15 @@ Module.vfs = {
     /**
      * Shall write file contents to the filesystem
      * @param {string} path 
-     * @param {string} contents 
+     * @param {Uint8Array} contents 
      * @returns
+     * Shall fire vfs.modified
      */
     put: function(path, contents) {
         if (!(contents instanceof Uint8Array)) {
             throw new TypeError("contents must be a Uint8Array");
         }
+
         let length = contents.length;
         let address = Module._malloc(length);
         Module.HEAPU8.set(contents, address);
@@ -553,6 +555,13 @@ Module.vfs = {
             address, length
         ]);
         Module._free(address);
+
+        Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+            detail: {
+                "method":   "put",
+                "paths":    [path] }
+        }));
+
         return result;
     },
     /**
@@ -590,11 +599,20 @@ Module.vfs = {
      * @param {bool} directories 
      * @returns bool
      * Shall return false if directories if false and path is a directory
+     * Shall fire vfs.modified on success
      */
     unlink: function(path, directories = false) {
-        return Module.ccall('em_vfs_unlink', 'bool',
+        const result = Module.ccall('em_vfs_unlink', 'bool',
             ['string', 'bool'],
             [ path, directories ]);
+        if (result) {
+            Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+                detail: { 
+                    "method": "unlink",
+                    "paths":  [path] }
+            }));
+        }
+        return result;
     },
 
     /**
@@ -602,11 +620,20 @@ Module.vfs = {
      * @param {string} from 
      * @param {string} to 
      * @returns bool
+     *  Shall fire vfs.modified on success
      */
     move: function(from, to) {
-        return Module.ccall('em_vfs_move', 'bool',
+        const result = Module.ccall('em_vfs_move', 'bool',
             [ 'string', 'string' ],
             [ from, to ]);
+        if (result) {
+            Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+                detail: { 
+                    "method": "move",
+                    "paths":  [from, to] }
+            }));
+        }
+        return result;
     },
 
     /**
@@ -615,9 +642,17 @@ Module.vfs = {
      * @returns bool 
      */
     mkdir: function(path) {
-        return Module.ccall('em_vfs_mkdir', 'bool',
+        const result = Module.ccall('em_vfs_mkdir', 'bool',
             [ 'string' ],
             [ path ]);
+        if (result) {
+            Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+                detail: { 
+                    "method": "mkdir",
+                    "paths":  [path] }
+            }));
+        }
+        return result;
     },
 
     /**
@@ -625,6 +660,11 @@ Module.vfs = {
      */
     reset: function() {
         Module.ccall('em_vfs_reset');
+        Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+            detail: { 
+                "method": "reset",
+                "paths":  [] }
+        }));
     },
 
     /**
@@ -906,6 +946,421 @@ Module.vfs = {
                 [ this.iterator ]);
             this.iterator = null;
         }
+    },
+
+    /*
+    * Shall abstract the vfs into/from a stream
+    */
+    Memory: class {
+        address = null;
+
+        constructor(path = '/') {
+            if (!(path instanceof Uint8Array)) {
+                this.address = Module.ccall(
+                    'em_vfs_memory_alloc',
+                    'number',
+                    [ 'string' ],
+                    [ path ]);
+                if (!this.address) {
+                    throw new Error(
+                        `Failed to stream vfs at ${path}`)
+                };
+            } else {
+                this.address =
+                    Module._malloc(path.length);
+                Module.HEAPU8.set(path, this.address);
+            }
+
+            this.header  = {
+                magic:   Module.iou.fromBytes(this.address, 6),    /* char[6] */
+                version: Module.iou.fromBytes(this.address+6, 6),  /* char[6] */
+                size: {
+                    header:  this.int32(this.address +  12),       /* uint32_t */
+                    length:  this.int32(this.address +  16),       /* uint32_t */
+                    records: this.int32(this.address +  20),       /* uint32_t */
+                    consumed: this.int64(this.address + 24)        /* uinr64_t */ 
+                },
+                offsets: [],
+            };
+
+            let offsets = this.address + 28; /* end of header */
+
+            for (let record = 0;
+                     record < this.header.size.records;
+                     record++){
+                this.header.offsets.push(
+                    this.int32(
+                        (offsets) + record * 4));
+            }
+
+            if (this.header.magic !== "EMFS1\0") {
+                console.log(this);
+                throw new Error(
+                    "Invalid Call, disk is not magic");
+            }
+        }
+
+        int16(address) {
+            const view = new DataView(
+                Module.HEAPU8.buffer, address, 2);
+            return view.getUint16(0, true);
+        }
+
+        int32(address) {
+            const view = new DataView(
+                Module.HEAPU8.buffer, address, 4);
+            return view.getUint32(0, true);
+        }
+
+        int64(address) {
+            const view = new DataView(
+                Module.HEAPU8.buffer, address, 8);
+            return Number(view.getBigUint64(0, true));
+        }
+
+        free() {
+            if (!this.address) {
+                throw new Error(
+                    "Invalid call, memory already freed");
+            }
+
+            Module.ccall(
+                'em_vfs_memory_free',
+                'number',
+                [ 'number' ],
+                [ this.address ]
+            );
+
+            this.address = 0;
+        }
+    },
+    
+    /**
+     * Shall abstract a stream entry
+     */
+    Entry: class {
+        constructor(memory, index) {
+            // memory: Module.vfs.Memory instance
+            // index: entry index in header.offsets
+
+            this.memory = memory;
+            this.index = index;
+
+            // Calculate base address of entries region
+            const entriesBase =
+                memory.address +
+                28 + // header size
+                memory.header.size.header;
+
+            // Offset of this entry relative to entriesBase
+            const offset = memory.header.offsets[index];
+
+            // Absolute address of this entry
+            this.address = entriesBase + offset;
+
+            // Parse fields
+            let parsing = this.address;
+
+            this.kind = Module.HEAPU8[parsing++];       // uint8
+            this.flags = Module.HEAPU8[parsing++];      // uint8
+            this.reserved = this.memory.int16(parsing); // uint16
+            
+            parsing += 2;
+
+            this.size = {
+                entry:  this.memory.int32(parsing),
+                name:   this.memory.int32(parsing+4),
+                data:   this.memory.int32(parsing+8)
+            };
+            parsing += 12;
+
+            this.stat = {
+                ctime:  this.memory.int64(parsing),
+                mtime:  this.memory.int64(parsing+8)
+            };
+            parsing += 16;
+
+            // Name (UTF-8, null-terminated, size.name bytes)
+            this.name = Module.iou.fromBytes(
+                parsing, this.size.name);
+            this.data = null;
+            if (this.kind === Module.vfs.EM_VFS_FILE && this.size.data > 0) {
+                this.data = Module.HEAPU8.slice(
+                    parsing + this.size.name,
+                    parsing + this.size.name + this.size.data
+                );
+            }
+        }
+    },
+
+    /**
+     * Shall abstract the reading of memory
+     */
+    Reader: class {
+        constructor(memory) {
+            this.memory = memory;
+        }
+
+        /**
+         * Shall read from offset for records
+         * @param {number} offset 
+         * @param {number} records 
+         * @returns Entry[]
+         */
+        read(offset = 0, records = 0) {
+            let results = [];
+            const total = this.memory.header.size.records;
+            if (!records) {
+                records = total - offset;
+            }
+            let count = 0;
+            while (offset < total && count < records) {
+                results.push(
+                    new Module.vfs.Entry(
+                        this.memory, offset));
+                offset++;
+                count++;
+            }
+            return results;
+        }
+
+        memory = null;
+    },
+
+    /**
+     * Shall abstract writing memory to vfs
+     */
+    Writer : class {
+        constructor(memory) {
+            this.memory = memory;
+        }
+
+        /**
+         * Shall write from memory into vfs from offset for records
+         * @param {number} offset 
+         * @param {number} records 
+         * @returns number of records written
+         * Note the number of records written may not match the number given
+         * it depends which order the directories are created, which is not ideal ...
+         */
+        write(offset = 0, records = 0) {
+            if (!this.memory.address) {
+                throw new Error(
+                    "Invalid Call, memory already free");
+            }
+            const result = Module.ccall(
+                'em_vfs_memory_write',
+                'number',
+                [ 'number', 'number', 'number' ],
+                [ this.memory.address, offset, records ]
+            );
+            if (result) {
+                Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+                    detail: { 
+                        "method": "write",
+                        "memory": this.memory,
+                        "paths":  [] }
+                }));
+            }
+            return result;
+        }
+
+        memory = null;
+    },
+
+    /**
+     * Shall provide persistence for the vfs
+     */
+    Persistence: class {
+        hasFilesystem() {
+            return Module.node ||
+                   ('storage' in navigator &&
+                        'getDirectory' in navigator.storage) ||
+                   ('indexedDB' in window);
+        }
+
+        enable = async (tick = 1000, path = "em.vfs") => {
+            if (!this.hasFilesystem()) {
+                console.warn(
+                    "Persistence is not available in this environment");
+                return false;
+            }
+
+            this.tick = tick;
+            this.path = path;
+
+            if (Module.node) {
+                this.fs = require("fs");
+            } else {
+                /* browser middleware only needs
+                    to provide a couple of methods */
+                const argument = this.path;
+
+                this.fs = {
+                    writeFile: async (path, data) => {
+                        if (('storage' in navigator &&
+                             'getDirectory' in navigator.storage)) {
+                            const root = await navigator
+                                .storage.getDirectory();
+                            const fh = await root.getFileHandle(
+                                argument, { create: true });
+                            const writable = await fh.createWritable();
+                            await writable.write(data);
+                            await writable.close();
+                        } else {
+                            const db = await new Promise((resolve, reject) => {
+                                const request = indexedDB.open(argument, 1);
+
+                                request.onerror = () => reject(request.error);
+                                request.onsuccess = () => resolve(request.result);
+
+                                request.onupgradeneeded = (event) => {
+                                    const db = event.target.result;
+                                    
+                                    if (!db.objectStoreNames.contains('files')) {
+                                        db.createObjectStore('files');
+                                    }
+                                };
+                            });
+                            const transaction =
+                                db.transaction(['files'], 'readwrite');
+                            const store = transaction.objectStore('files');
+
+                            return new Promise((resolve, reject) => {
+                                const request =
+                                    store.put(data, path);
+                                request.onsuccess = () => resolve();
+                                request.onerror = () => reject(request.error);
+                            });
+                        }
+                    },
+                    readFile: async(path) => {
+                        if (('storage' in navigator &&
+                            'getDirectory' in navigator.storage)) {
+                            const root = await navigator.storage.getDirectory();
+                            const fh = await root.getFileHandle(argument);
+                            const file = await fh.getFile();
+                            return new Uint8Array(
+                                await file.arrayBuffer());
+                        } else {
+                            const db = await new Promise((resolve, reject) => {
+                                const request = indexedDB.open(argument, 1);
+                                
+                                request.onerror = () => reject(request.error);
+                                request.onsuccess = () => resolve(request.result);
+                                
+                                request.onupgradeneeded = (event) => {
+                                    const db = event.target.result;
+                                    if (!db.objectStoreNames.contains('files')) {
+                                        db.createObjectStore('files');
+                                    }
+                                };
+                            });
+                            
+                            const transaction = db.transaction(['files'], 'readonly');
+                            const store = transaction.objectStore('files');
+                            
+                            return new Promise((resolve, reject) => {
+                                const request = store.get(path);
+                                request.onsuccess = () => {
+                                    if (request.result) {
+                                        resolve(request.result);
+                                    } else {
+                                        reject(new Error(`File not found: ${path}`));
+                                    }
+                                };
+                                request.onerror = () => reject(request.error);
+                            });
+                        }
+                    }
+                };
+            }
+
+            await this.onEnable();
+            return true;
+        }
+
+        onModified = (event) => {
+            if (event.detail.method === "write") {
+                if (this.memory == event.detail.memory) {
+                    return;
+                }
+            }
+
+            this.dirty = true;
+        }
+
+        onTick = () => {
+            if (this.dirty) {
+                this.onDirty();
+                this.dirty = false;
+            }
+            this.ticking = setTimeout(this.onTick, this.tick);
+        }
+
+        onDirty = async () => {
+            this.memory = new Module.vfs.Memory();
+
+            const buffer = new Uint8Array(
+                Module.HEAPU8.buffer, 
+                this.memory.address, 
+                this.memory.header.size.consumed
+            );
+
+            try {
+                await this.fs.writeFile(this.path, buffer);
+            } catch (error) {
+                console.error(
+                    'persistence failed', error);
+            }
+
+            /** cleanup gracefully **/
+            this.memory.free();
+            this.memory = null;
+
+            /* prevent premature re-entry */
+            this.dirty  = false;
+        }
+
+        onEnable = async () => {
+            try {
+                const data   = await this.fs.readFile(this.path);
+                const memory = new Module.vfs.Memory(data);
+                const writer = 
+                    new Module.vfs.Writer(memory);
+                writer.write();
+                memory.free();
+            } catch (error) {
+                console.warn(
+                    'persistence cant find disk', error);
+            }
+
+            Module.addEventListener(
+                "vfs.modified",
+                this.onModified);
+            this.ticking = setTimeout(
+                this.onTick, this.tick);
+        }
+
+        onDisable = () => {
+            clearTimeout(this.ticking);
+            Module.removeEventListener(
+                "vfs.modified",
+                this.onModified);
+            this.tick    = 0;
+            this.path    = null;
+            this.fs      = null;
+            this.ticking = null;
+        }
+
+        disable() {
+            this.onDisable();
+        }
+
+        tick    = 0;
+        ticking = null;
+        path    = null;
+        memory  = null;
     }
 };
 
@@ -977,19 +1432,29 @@ Module['onRuntimeInitialized'] = function() {
         });
     }
 
-    Module.decoder = new TextDecoder();
-
     if (Module.node) {
         try {
             const EventEmitter = require('events');
             Module.events = new EventEmitter();
-            Module.addEventListener = (type, fn) => Module.events.on(type, fn);
-            Module.dispatchEvent = (event) => Module.events.emit(event.type, event);
+            Module.addEventListener =    (type, fn) =>
+                Module.events.on(type, fn);
+            Module.removeEventListener = (type, fn) =>
+                Module.events.off(type, fn);
+            Module.dispatchEvent =       (event)    =>
+                Module.events.emit(event.type, event);
         } catch (e) {
             Module.events = {};
             Module.addEventListener = (type, fn) => {
                 if (!Module.events[type]) Module.events[type] = [];
                 Module.events[type].push(fn);
+            };
+            Module.removeEventListener = (type, fn) => {
+                if (Module.events[type]) {
+                    const index = Module.events[type].indexOf(fn);
+                    if (index > -1) {
+                        Module.events[type].splice(index, 1);
+                    }
+                }
             };
             Module.dispatchEvent = (event) => {
                 if (Module.events[event.type]) {
@@ -1002,6 +1467,12 @@ Module['onRuntimeInitialized'] = function() {
     Module.events = new EventTarget();
     Module.addEventListener = (type, fn) =>
         Module.events.addEventListener(type, fn);
+    Module.removeEventListener = (type, fn) =>
+        Module.events.removeEventListener(type, fn);
     Module.dispatchEvent = (event) =>
         Module.events.dispatchEvent(event);
+
+    Module.vfs.persistence =
+        new Module.vfs.Persistence();
+    Module.vfs.persistence.enable();
 };

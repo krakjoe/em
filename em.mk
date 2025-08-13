@@ -220,6 +220,12 @@ $(EM_SRC_DIR)/path.lo: $(EM_SRC_DIR)/path.c $(EM_PHP_DIR)/.libs/libphp.a
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/path.c -o $(EM_SRC_DIR)/path.lo
 
+$(EM_SRC_DIR)/memory.lo: $(EM_SRC_DIR)/memory.c \
+	$(EM_SRC_DIR)/node.lo $(EM_SRC_DIR)/path.lo
+	$(LIBTOOL) --silent --mode=compile --tag=CC \
+		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
+			-c $(EM_SRC_DIR)/memory.c -o $(EM_SRC_DIR)/memory.lo
+
 $(EM_SRC_DIR)/dir.lo: $(EM_SRC_DIR)/dir.c $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
@@ -227,7 +233,8 @@ $(EM_SRC_DIR)/dir.lo: $(EM_SRC_DIR)/dir.c $(EM_PHP_DIR)/.libs/libphp.a
 
 $(EM_SRC_DIR)/vfs.lo: $(EM_SRC_DIR)/vfs.c \
 	$(EM_SRC_DIR)/dir.lo $(EM_SRC_DIR)/node.lo \
-	$(EM_SRC_DIR)/path.lo $(EM_PHP_DIR)/.libs/libphp.a
+	$(EM_SRC_DIR)/path.lo $(EM_SRC_DIR)/memory.lo \
+	$(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
 		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $(EM_SRC_DIR)/vfs.c -o $(EM_SRC_DIR)/vfs.lo
@@ -278,6 +285,7 @@ bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_RULES) $(EM_RECIPE_LINK_OBJECTS) $(EM
 		$(EM_SRC_DIR)/node.o \
 		$(EM_SRC_DIR)/path.o \
 		$(EM_SRC_DIR)/vfs.o \
+		$(EM_SRC_DIR)/memory.o \
 		$(EM_SRC_DIR)/iterator.o \
 		$(EM_SRC_DIR)/buffer.o \
 		$(EM_SRC_DIR)/dispatch.o \
