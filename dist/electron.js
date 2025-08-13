@@ -25,12 +25,14 @@ function createWindow(url) {
         }
     })
     win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-        callback({
-            responseHeaders: {
-                ...details.responseHeaders,
-                'Content-Security-Policy': ['*']
-            }
-        })
+        const responseHeaders =
+            { ...details.responseHeaders }
+        delete responseHeaders[
+            'content-security-policy']
+        delete responseHeaders[
+            'Content-Security-Policy']
+        
+        callback({ responseHeaders })
     })
     win.webContents.once('did-finish-load', () => {
         setTimeout(() => {
