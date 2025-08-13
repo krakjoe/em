@@ -18,9 +18,19 @@ function createWindow(url) {
             webSecurity: false,
             allowRunningInsecureContent: true,
             sandbox: false,
+            additionalArguments: ['--disable-web-security'],  // Add this
+            experimentalFeatures: true,  // Add this
             preload: path.join(__dirname,
                 'electron.preload.js')
         }
+    })
+    win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Content-Security-Policy': ['*']  // Allow everything
+            }
+        })
     })
     win.webContents.once('did-finish-load', () => {
         setTimeout(() => {
