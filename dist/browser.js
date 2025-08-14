@@ -60,7 +60,7 @@ class Browser {
                 window.updateStatus(
                     `Loading ${event.data.url}`)
                 try {
-                    const response = Module.dispatch(
+                    const response = await Module.dispatch(
                         encoder.encode(JSON.stringify({
                             SERVER_HOSTNAME: window.location.hostname,
                             SERVER_POST:     window.location.port ?

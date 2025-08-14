@@ -858,14 +858,14 @@ function initializeEventHandlers() {
     refreshFilesButton.addEventListener('click', refreshFileTree);
     // All modal OK/cancel logic is now handled by Modal class
     document.addEventListener('click', hideContextMenu);
-    contextMenu.addEventListener('click', (e) => {
+    contextMenu.addEventListener('click', async (e) => {
         e.stopPropagation();
         const item = e.target.closest('.context-menu-item');
         if (!item) return;
         const action = item.dataset.action;
         switch (action) {
             case 'run':
-                runFile(currentContextPath);
+                await runFile(currentContextPath);
                 break;
             case 'open':
                 openFile(currentContextPath);
@@ -983,7 +983,7 @@ function updateStatus(message, type) {
 }
 
 // Run a file using Module.include and display output
-function runFile(path) {
+async function runFile(path) {
     if (!isReady || !Module || !Module.vfs) {
         updateStatus('PHP runtime not ready', 'error');
         return;
@@ -991,9 +991,8 @@ function runFile(path) {
     try {
         updateStatus(`Running: ${path}`, 'loading');
         outputStatus.textContent = 'Running...';
-        output.textContent = Module.include(path);
+        await Module.include(path, output);
         updateStatus(`Complete: ${path}`, 'success');
-        outputStatus.textContent = 'Complete';
     } catch (error) {
         output.textContent = `Error: ${error.message}`;
         console.error(
@@ -1294,7 +1293,7 @@ async function githubApiRequest(path) {
     return await resp.json();
 }
 
-function runCode() {
+async function runCode() {
     if (!isReady || !Module) {
         updateStatus('PHP runtime not ready', 'error');
         return;
@@ -1319,8 +1318,8 @@ function runCode() {
         updateStatus(`Running: ${currentOpenTab.path}`, 'loading');
         outputStatus.textContent = 'Running...';
         try {
-            const result = Module.include(currentOpenTab.path);
-            output.textContent = result;
+            const result = await
+                Module.include(currentOpenTab.path, output);
             updateStatus(`Ran: ${currentOpenTab.path}`, 'success');
             outputStatus.textContent = 'Complete';
         } catch (error) {
@@ -1339,8 +1338,8 @@ function runCode() {
         updateStatus('Running code...', 'loading');
         outputStatus.textContent = 'Running...';
         try {
-            const result = Module.invoke(currentEditorCode);
-            output.textContent = result;
+            await Module.invoke(
+                currentEditorCode, output);
             updateStatus('Code executed successfully', 'success');
             outputStatus.textContent = 'Complete';
         } catch (error) {

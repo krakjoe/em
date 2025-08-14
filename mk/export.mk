@@ -37,7 +37,9 @@ EM_EXPORT_FUNCTIONS = [          \
 	"_em_run_length",            \
 	"_em_run_free",              \
 	"_em_shutdown",              \
-	"_em_http_buffer",           \
+	"_em_http_request_timeout",  \
+	"_em_http_request_error",    \
+	"_em_http_request_response", \
 	"_em_vfs_put",               \
 	"_em_vfs_unlink",            \
 	"_em_vfs_mkdir",             \
@@ -59,6 +61,7 @@ EM_EXPORT_FUNCTIONS = [          \
 	"_em_vfs_memory_alloc",      \
 	"_em_vfs_memory_write",      \
 	"_em_vfs_memory_free",       \
+	"_select",                   \
 	"_malloc", "_free"           \
 ]
 define EM_EXPORT_ADD_FUNCTION

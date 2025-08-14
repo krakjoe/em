@@ -32,6 +32,7 @@ export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)
 ########################################################################
 # Public, but unlikely to want to set these
 ########################################################################
+export EM_EMSDK_MEMORY   ?= 128MB
 export EM_EMSDK_CFLAGS   ?=
 export EM_EMSDK_LDFLAGS  ?=
 ########################################################################
@@ -270,11 +271,14 @@ api: $(EM_SRC_DIR)/api.lo
 
 bin: $(EM_SRC_DIR)/api.lo $(EM_RECIPE_LINK_RULES) $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --preserve-dup-deps --mode=link --tag=CC \
-	$(CC) -o $(EM_ROOT_DIR)/php-em.js --post-js=$(EM_SRC_DIR)/stub.js $(EM_RECIPE_LINK_OBJECTS) \
+	$(CC) -o $(EM_ROOT_DIR)/php-em.js \
+		--post-js=$(EM_SRC_DIR)/stub.js $(EM_RECIPE_LINK_OBJECTS) \
 		-s EXPORTED_FUNCTIONS='$(EM_EXPORT_FUNCTIONS)' \
 		-s EXPORTED_RUNTIME_METHODS='$(EM_EXPORT_METHODS)' \
+		-s ERROR_ON_UNDEFINED_SYMBOLS=0 \
 		-s ALLOW_MEMORY_GROWTH=1 \
-		-s INITIAL_MEMORY=128MB \
+		-s INITIAL_MEMORY=$(EM_EMSDK_MEMORY) \
+		-s ASYNCIFY=1 \
 		-s EXIT_RUNTIME=1 \
 		-s WASM=1 $(EM_EMSDK_LDFLAGS) $(EM_RECIPE_LDFLAGS) $(EM_RECIPE_LIBS) \
 		$(EM_PHP_DIR)/.libs/libphp.a \

@@ -21,27 +21,47 @@
 #include "http.h"
 #include "request.h"
 
-static void em_http_request_headers_parse_line(em_http_request_t* request, const char* line, size_t* header_count) {
+HashTable __em_http_requests__;
+
+void em_http_request_startup(void) {
+    zend_hash_init(
+        &__em_http_requests__, 8, NULL,
+        em_http_abstract_destroy, 1);
+}
+
+static void em_http_request_headers_parse_line(em_http_request_t* request, const char* line, size_t* count) {
     // Find the colon separator
     const char* colon = strchr(line, ':');
-    if (!colon) return;
+    if (!colon) {
+        return;
+    }
 
     // Split and trim the key
     size_t key_len = colon - line;
-    while (key_len > 0 && (line[key_len-1] == ' ' || line[key_len-1] == '\t')) key_len--;
-    if (key_len == 0) return;
+    while ((key_len > 0) &&
+          (line[key_len-1] == ' ' || line[key_len-1] == '\t'))
+        key_len--;
+    if (key_len == 0) {
+        return;
+    }
 
     // Skip colon and whitespace for value
     const char* value = colon + 1;
     while (*value == ' ' || *value == '\t') value++;
     size_t value_len = strlen(value);
-    while (value_len > 0 && (value[value_len-1] == ' ' || value[value_len-1] == '\t')) value_len--;
-    if (value_len == 0) return;
+    while ((value_len > 0) &&
+           (value[value_len-1] == ' ' || value[value_len-1] == '\t'))
+        value_len--;
+    if (value_len == 0) {
+        return;
+    }
 
     // Store the header
-    request->headers.keys[*header_count] = pestrndup(line, key_len, 1);
-    request->headers.values[*header_count] = pestrndup(value, value_len, 1);
-    (*header_count)++;
+    request->headers.keys[*count] =
+        pestrndup(line, key_len, 1);
+    request->headers.values[*count] =
+        pestrndup(value, value_len, 1);
+    (*count)++;
 }
 
 static void em_http_request_headers_array(em_http_request_t* request, zval* headers) {
@@ -102,18 +122,19 @@ static void em_http_request_headers_string(em_http_request_t* request, zval* hea
     // Now parse each line
     char* parsing = estrndup(str, len);
     char* line = strtok(parsing, "\r\n");
-    size_t header_count = 0;
+    size_t counted = 0;
 
     while (line) {
         // Skip empty lines
         if (*line) {
-            em_http_request_headers_parse_line(request, line, &header_count);
+            em_http_request_headers_parse_line(
+                request, line, &counted);
         }
         line = strtok(NULL, "\r\n");
     }
 
     efree(parsing);
-    request->headers.length = header_count;
+    request->headers.length = counted;
 }
 
 em_http_request_t em_http_request_create(const char* url, php_stream_context* context) {
@@ -177,6 +198,131 @@ em_http_request_t em_http_request_create(const char* url, php_stream_context* co
     return request;
 }
 
+EM_JS(int, em_http_request_start, (
+    int id,
+    uint32_t timeout,
+    const char* method,
+    const char* url,
+    const char** hkeys, 
+    const char** hvalues,
+    size_t hlength,
+    const char* body,
+    size_t blength), {
+
+    const xhr = new XMLHttpRequest();
+ 
+    const http = {
+        id:     id,
+        method: method ? UTF8ToString(method) : 'GET',
+        url:    UTF8ToString(url),
+        xhr:    xhr
+    };
+
+    Module.http.set(id, http);
+
+    if (timeout) {
+       // xhr.timeout = timeout;
+    }
+
+    xhr.open(http.method, http.url, true);
+    xhr.responseType = 'arraybuffer';
+
+    // Set headers
+    if (hlength > 0) {
+        for (let i = 0; i < hlength; i++) {
+            const key = UTF8ToString(Module.HEAP32[(hkeys >> 2) + i]);
+            const value = UTF8ToString(Module.HEAP32[(hvalues >> 2) + i]);
+            if (key.toLowerCase() !== 'user-agent') {
+                xhr.setRequestHeader(key, value);
+            }
+        }
+    }
+
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+            let response = new Uint8Array();
+
+            if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+                response = new Uint8Array(xhr.response);
+            }
+
+            let buffer =
+                Module._malloc(response.byteLength);
+
+            if (response.byteLength) {
+                Module.HEAPU8.set(response, buffer);
+            }
+
+            Module.ccall('em_http_request_response', null, 
+                ['number', 'number', 'number', 'number'], 
+                [id, xhr.status, buffer, response.byteLength]);
+
+            Module.http.delete(id);
+        }
+    };
+
+    xhr.onerror = function() {
+        Module.ccall('em_http_request_error', null, ['number'], [id]);
+    };
+
+
+
+    // Prepare and send body
+    let sendData = null;
+    if (blength > 0) {
+        sendData = new Uint8Array(blength);
+        for (let i = 0; i < blength; i++) {
+            sendData[i] = Module.HEAPU8[body + i];
+        }
+    }
+
+    xhr.send(sendData);
+    return 1; // Started successfully
+});
+
+void EMSCRIPTEN_KEEPALIVE em_http_request_response(
+    int id, int status, uintptr_t buffer, size_t length) {
+    em_http_abstract_t* abstract =
+        (em_http_abstract_t*)
+            zend_hash_index_find_ptr(
+                &__em_http_requests__, id);
+    if (status >= 200 && status < 300) {
+        abstract->state = EM_HTTP_COMPLETE;
+    } else {
+        abstract->state =
+            EM_HTTP_COMPLETE | EM_HTTP_ERROR;
+    }
+
+    abstract->response.position = 0;
+    abstract->response.length   = length;
+    abstract->response.data     = (char*) buffer;
+
+    em_http_request_event_set(abstract);
+}
+
+void EMSCRIPTEN_KEEPALIVE em_http_request_timeout(int id) {
+    em_http_abstract_t* abstract =
+        (em_http_abstract_t*)
+            zend_hash_index_find_ptr(
+                &__em_http_requests__, id);
+    abstract->state =
+        EM_HTTP_COMPLETE | 
+        EM_HTTP_ERROR | 
+        EM_HTTP_TIMEOUT;
+    em_http_request_event_set(abstract);
+}
+
+void EMSCRIPTEN_KEEPALIVE em_http_request_error(int id) {
+    em_http_abstract_t* abstract =
+        (em_http_abstract_t*)
+            zend_hash_index_find_ptr(
+                &__em_http_requests__, id);
+    abstract->state = 
+        EM_HTTP_COMPLETE |
+        EM_HTTP_ERROR;
+    em_http_request_event_set(abstract);
+}
+
 void em_http_request_destroy(em_http_request_t* request) {
     if (request->method) {
         pefree(request->method, 1);
@@ -196,116 +342,23 @@ void em_http_request_destroy(em_http_request_t* request) {
     }
 }
 
-EM_JS(ssize_t, em_http_request, (
-    const char*  method,
-    const char*  url,
-    const char** hkeys,
-    const char** hvalues,
-    size_t       hlength,
-    const char*  body,
-    size_t       blength,
-    size_t       timeout,
-    uintptr_t abstract), {
+void em_http_request_event_set(em_http_abstract_t* abstract) {
+    abstract->event.drained = false;
+    write(
+        abstract->event.pipe[1],
+        "\0",
+        sizeof(char));
+}
 
-    let http = {
-        method:  method  ?
-            UTF8ToString(method)  : 'GET',
-        url: UTF8ToString(url),
-        headers: {
-            keys:   hkeys,
-            values: hvalues,
-            length: hlength
-        },
-        body:     null,
-        blength:  blength,
-        timeout:  timeout,
-        xhr:      new XMLHttpRequest(),
-    };
-
-    if (http.blength) {
-        http.body = "";
-        for (let b = 0; b < http.blength; b++) {
-            http.body += String.fromCharCode(
-                Module.HEAPU8[body + b]);
-        }
+void em_http_request_event_clear(em_http_abstract_t* abstract) {
+    if (!abstract->event.drained) {
+        abstract->event.drained = true;
+        read(abstract->event.pipe[0],
+            &abstract->event.drain, sizeof(char));
     }
+}
 
-    if (Module.dispatchEvent) {
-        Module.dispatchEvent(new CustomEvent('io.begin', {
-            detail: http
-        }));
-    }
-
-    try {
-        http.xhr.open(
-            http.method, http.url, false);
-
-        // set headers after open()
-        if (http.headers.length) {
-            for (let h = 0; h < http.headers.length; h++) {
-                let key = UTF8ToString(
-                    Module.HEAP32[
-                        (http.headers.keys   >> 2) + h]);
-                let value = UTF8ToString(
-                    Module.HEAP32[
-                        (http.headers.values >> 2) + h]);
-
-                if (key.toLowerCase() == "user-agent") {
-                    console.warn(
-                        "illegal to set user-agent, ignoring");
-                    continue;
-                }
-
-                http.xhr.setRequestHeader(key, value);
-            }
-        }
-
-        // x-user-defined is mysterious:
-        // this tells javascript not to mess with the stream essentially
-        http.xhr.overrideMimeType('text/plain; charset=x-user-defined');
-
-        http.xhr.send(http.body);
-
-        if (http.xhr.status >= 200 && http.xhr.status < 300) {
-            var response = http.xhr.responseText;
-            var length   = response.length;
-            var buffer   = Module.
-                _em_http_buffer(abstract, length);
-
-            for (var i = 0; i < length; i++) {
-                Module.HEAPU8[buffer + i] =
-                    response.charCodeAt(i) & 0xFF;
-            }
-
-            if (Module.dispatchEvent) {
-                Module.dispatchEvent(new CustomEvent('io.end', {
-                    detail: {
-                        address: buffer,
-                        length:  length,
-                        ...http
-                    }
-                }));
-            }
-
-            return length;
-        } else {
-            if (Module.dispatchEvent) {
-                Module.dispatchEvent(new CustomEvent('io.error', {
-                    detail: http
-                }));
-            }
-        }
-    } catch (exception) {
-        if (Module.dispatchEvent) {
-            Module.dispatchEvent(new CustomEvent('io.exception', {
-                detail: {
-                    exception: exception,
-                    ...http
-                }
-            }));
-        }
-
-        console.error('Fetch failed:', exception);
-    }
-    return -1;
-});
+void em_http_request_shutdown(void) {
+    zend_hash_destroy(
+        &__em_http_requests__);
+}

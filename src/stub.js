@@ -46,6 +46,11 @@ Module.electron =
             userAgent.includes('Electron');
 
 /**
+ * Shall store in flight requests
+ */
+Module.http = new Map();
+
+/**
  * Shall startup (MINIT) em
  * @returns bool
  */
@@ -160,7 +165,7 @@ Module.environ = function(environment) {
  * @param {Uint8Array} body
  * @returns {*}
  */
-Module.dispatch = function(env, head, body) {
+Module.dispatch = async function(env, head, body) {
     Module.dispatchEvent(new CustomEvent('dispatch.begin', { 
         detail: {
             "env":   env,
@@ -190,7 +195,7 @@ Module.dispatch = function(env, head, body) {
 
     try {
         result = {
-            address: Module.ccall(
+            address: await Module.ccall(
                 'em_run_request',
                 'number',
                 [   'number','number',    /* const char* env,  size_t elen */
@@ -200,7 +205,7 @@ Module.dispatch = function(env, head, body) {
                     request.env,  env.byteLength,
                     request.head, head.byteLength,
                     request.body, body.byteLength,
-                ]),
+                ], { async: true }),
             length: Module.ccall(
                 'em_run_length', 'number')
         };
@@ -281,7 +286,7 @@ Module.dispatch = function(env, head, body) {
  * @param {HTMLElement|Function|undefined} output
  * @returns string
  */
-Module.include = function(script, output) {
+Module.include = async function(script, output) {
     // Fire start event
     Module.dispatchEvent(new CustomEvent('include.begin', { 
         detail: { 
@@ -292,11 +297,11 @@ Module.include = function(script, output) {
 
     // run the include, getting response address and length in return
     let result = {
-        address: Module.ccall(
+        address: await Module.ccall(
             'em_run_script',
             'number',
             [ 'string' ],
-            [ script ]),
+            [ script ], { async: true }),
         length: Module.ccall(
             'em_run_length', 'number')
     };
@@ -393,7 +398,7 @@ Module.include = function(script, output) {
  * @param {(HTMLElement|Function|undefined)} output 
  * @returns string
  */
-Module.invoke = function(input, output = undefined) {
+Module.invoke = async function(input, output = undefined) {
     let code = null;
 
     if (typeof HTMLTextAreaElement !== 'undefined' &&
@@ -442,11 +447,11 @@ Module.invoke = function(input, output = undefined) {
 
     // run the code, getting it's address and length in return
     let result = {
-        address: Module.ccall(
+        address: await Module.ccall(
             'em_run_string',
             'number',
             ['string', 'number'],
-            [code.value, code.length]),
+            [ code.value, code.length ], { async: true }),
         length: Module.ccall(
             'em_run_length', 'number')
     };

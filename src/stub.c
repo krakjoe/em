@@ -16,7 +16,9 @@
   +----------------------------------------------------------------------+
  */
 
+#include <emscripten.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <spawn.h>
@@ -79,4 +81,32 @@ int munmap(void *addr, size_t length) {
     (void)length;  
 
     return 0; // not supported
+}
+
+extern  int __syscall__newselect(
+    int,
+    intptr_t,
+    intptr_t,
+    intptr_t,
+    intptr_t);
+
+int select(
+    int m,
+    fd_set *r,
+    fd_set* w,
+    fd_set* e,
+    struct timeval* t) {
+    /**
+     * We must yield control to javascript before any selects
+     * this prevents unbounded hanging on select where a stream will only
+     * become ready because javascript has made the request ...
+     */
+    emscripten_sleep(100);
+
+    return __syscall__newselect(
+        m,
+        (intptr_t)r,
+        (intptr_t)w,
+        (intptr_t)e,
+        (intptr_t)t);
 }
