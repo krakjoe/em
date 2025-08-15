@@ -93,3 +93,19 @@ EM_EXPORT_METHODS  += $(EM_EXPORT)
 endif
 endef
 ########################################################################
+# EM_EXPORT_ADD_BLACKLIST
+########################################################################
+EM_EXPORT_BLACKLIST = [    \
+	"em_buffer_join",      \
+	"em_buffer_write",     \
+	"em_buffer_clear"      \
+]
+define EM_EXPORT_ADD_BLACKLIST
+$(eval EM_EXPORT := $(strip $(1)))
+ifeq ($(filter \
+	$(EM_EXPORT),\
+		$(EM_EXPORT_BLACKLIST)),)
+EM_EXPORT_BLACKLIST  += $(EM_EXPORT)
+endif
+endef
+########################################################################

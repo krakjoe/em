@@ -26,10 +26,19 @@
 
 extern HashTable __em_environ__;
 
-typedef void(*em_dispatch_handler_t)(sapi_request_info* info);
+typedef struct _em_dispatch_context_t em_dispatch_context_t;
 
-typedef struct _em_dispatch_context_t {
+typedef void(*em_dispatch_handler_t)(em_dispatch_context_t* context);
+
+typedef struct _em_dispatch_context_previous_t {
+    em_dispatch_context_t* context;
+    sapi_request_info      info;
+} em_dispatch_context_previous_t;
+
+struct _em_dispatch_context_t {
     HashTable environ;
+    sapi_request_info *info;
+
     struct {
         struct {
             em_buffer_t head;
@@ -45,8 +54,9 @@ typedef struct _em_dispatch_context_t {
         zend_llist request;
         zend_llist response;
     } headers;
-    sapi_request_info *info;
-} em_dispatch_context_t;
+    em_dispatch_context_previous_t previous;
+    em_dispatch_handler_t handler;
+};
 
 typedef struct _em_dispatch_header_t {
     struct {
@@ -67,27 +77,32 @@ typedef enum _em_dispatch_selector_t {
     EM_DISPATCH_BODY,
 } em_dispatch_selector_t;
 
-void em_dispatch_header(const char* format, ...);
+void em_dispatch_header(em_dispatch_context_t* context, const char* format, ...);
 
-size_t em_dispatch_response(em_dispatch_selector_t selector, const char* buffer, size_t length);
+size_t em_dispatch_response(em_dispatch_context_t* context, em_dispatch_selector_t selector, const char* buffer, size_t length);
 
 static size_t em_dispatch_writer(const char* buffer, size_t length) {
-    return em_dispatch_response(EM_DISPATCH_BODY, buffer, length);
+    return em_dispatch_response(
+        SG(server_context), EM_DISPATCH_BODY, buffer, length);
 }
 
-em_dispatch_handler_t em_dispatch_setup(
+em_dispatch_context_t* em_dispatch_enter(
     sapi_request_info* info,
     const char* env,  size_t elen,
     const char* head, size_t hlen,
     const char* body, size_t blen);
-em_dispatch_handler_t em_dispatch_setup_script(
+em_dispatch_context_t* em_dispatch_enter_script(
     sapi_request_info* info,
     const char* script);
-em_dispatch_handler_t em_dispatch_setup_code(
+em_dispatch_context_t* em_dispatch_enter_code(
     sapi_request_info* info,
     const char* code, size_t length);
+em_dispatch_context_t* em_dispatch_leave(
+    em_dispatch_context_t* context);
 
-void em_dispatch_cleanup(void);
+void em_dispatch_free(
+    em_dispatch_context_t* context);
+
 void em_dispatch_startup(void);
 void em_dispatch_shutdown(void);
 #endif

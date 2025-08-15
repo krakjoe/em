@@ -25,8 +25,51 @@ Module.ready = false;
  * Shall provide encoding services
  */
 Module.encoding = {
-    in:  new TextEncoder("utf-8"),
-    out: new TextDecoder("utf-8")
+    // For UTF-8 text (interface, source code, etc.)
+    utf8: {
+        encoder: new TextEncoder("utf-8"),
+        decoder: new TextDecoder("utf-8"),
+
+        in:  (str)   => Module.encoding.utf8.encoder.encode(str),
+        out: (bytes) => Module.encoding.utf8.decoder.decode(bytes),
+    },
+    // For raw bytes/Latin-1, will delegate on encountering unicode to utf-8
+    latin1: {
+        in: function(str) {
+            const bytes = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) {
+                if (str.charCodeAt(i) > 0xFF) {
+                    return Module.encoding.utf8.in(str);
+                }
+
+                bytes[i] = str.charCodeAt(i) & 0xFF;
+            }
+            return bytes;
+        },
+        out: function(bytes) {
+            let result = '';
+            for (let i = 0; i < bytes.length;) {
+                const b = bytes[i];
+                // Check for valid UTF-8 multi-byte sequence
+                if (b >= 0xC2 && b <= 0xDF && i + 1 < bytes.length &&
+                    bytes[i+1] >= 0x80 && bytes[i+1] <= 0xBF) {
+                    return Module.encoding.utf8.out(bytes);
+                } else if (b >= 0xE0 && b <= 0xEF && i + 2 < bytes.length &&
+                    bytes[i+1] >= 0x80 && bytes[i+1] <= 0xBF &&
+                    bytes[i+2] >= 0x80 && bytes[i+2] <= 0xBF) {
+                    return Module.encoding.utf8.out(bytes);
+                } else if (b >= 0xF0 && b <= 0xF4 && i + 3 < bytes.length &&
+                    bytes[i+1] >= 0x80 && bytes[i+1] <= 0xBF &&
+                    bytes[i+2] >= 0x80 && bytes[i+2] <= 0xBF &&
+                    bytes[i+3] >= 0x80 && bytes[i+3] <= 0xBF) {
+                    return Module.encoding.utf8.out(bytes);
+                }
+                result += String.fromCharCode(b);
+                i++;
+            }
+            return result;
+        }
+    }
 };
 
 /**
@@ -73,9 +116,9 @@ Module.response = function(address, length) {
         Module.HEAPU8.buffer,
         address, length
     ).slice();
-    
+
     // Convert to text for header parsing
-    const text = Module.iou.fromBytes(address, length);
+    const text = Module.encoding.latin1.out(heap);
 
     let statusCode = 200;
     let statusText = 'OK';
@@ -103,8 +146,8 @@ Module.response = function(address, length) {
             headerEndIndex = i;
             // Calculate byte offset where body starts
             const headerText = lines.slice(0, i + 1).join('\r\n');
-            headersEndOffset = Module.encoding.in
-                .encode(headerText).length;
+            headersEndOffset = Module.encoding.latin1
+                .in(headerText).length;
             break;
         }
 
@@ -140,7 +183,7 @@ Module.environ = function(environment) {
         JSON.stringify(environment);
 
     const buffer =
-        Module.encoding.in.encode(json);
+        Module.encoding.latin1.in(json);
     let heap = Module._malloc(
         buffer.byteLength + 1);
     Module.HEAPU8.set(buffer, heap);
@@ -188,27 +231,20 @@ Module.dispatch = async function(env, head, body) {
     Module.HEAPU8[request.head + head.byteLength] = 0;
     Module.HEAPU8[request.body + body.byteLength] = 0;
 
-    let result = {
-        address: -1,
-        length:  -1,
-    };
+    let context = null;
 
     try {
-        result = {
-            address: await Module.ccall(
-                'em_run_request',
-                'number',
-                [   'number','number',    /* const char* env,  size_t elen */
-                    'number', 'number',   /* const char* head, size_t hlen */
-                    'number', 'number'    /* const char* body, size_t blen */
-                ], [ 
-                    request.env,  env.byteLength,
-                    request.head, head.byteLength,
-                    request.body, body.byteLength,
-                ], { async: true }),
-            length: Module.ccall(
-                'em_run_length', 'number')
-        };
+        context = await Module.ccall(
+            'em_run_request',
+            'number',
+            [   'number','number',    /* const char* env,  size_t elen */
+                'number', 'number',   /* const char* head, size_t hlen */
+                'number', 'number'    /* const char* body, size_t blen */
+            ], [ 
+                request.env,  env.byteLength,
+                request.head, head.byteLength,
+                request.body, body.byteLength,
+            ], { async: true });
     } finally {
         Module._free(request.env);
         Module._free(request.head);
@@ -216,7 +252,7 @@ Module.dispatch = async function(env, head, body) {
     }
 
     // check for errors
-    if (result.address < 0) {
+    if (context < 0) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('dispatch.error', { 
             detail: {
@@ -230,8 +266,17 @@ Module.dispatch = async function(env, head, body) {
         throw new Error("Unexpected result, dispatch failed");
     }
 
+    let result = {
+        address: Module.ccall(
+            'em_run_result', 'number',
+                [ 'number' ], [ context ]),
+        length: Module.ccall(
+            'em_run_length', 'number',
+            [ 'number' ], [ context ])
+    };
+
     // ensure there's stuff to read on the heap
-    if (!result.length) {
+    if (!result.address || !result.length) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('dispatch.error', { 
             detail: {
@@ -240,6 +285,10 @@ Module.dispatch = async function(env, head, body) {
                 "body":  body,
             }
         }));
+
+        // release the context that em allocated for this request
+        Module.ccall('em_run_free',
+            'void', [ 'number' ], [ context ]);
 
         // we don't need to care about freeing, nothing was allocated
         throw new Error("Unexpected result, no output");
@@ -263,8 +312,9 @@ Module.dispatch = async function(env, head, body) {
 
         throw exception;
     } finally {
-        // release the buffer that em alloc'd
-        Module.ccall('em_run_free');
+        // release the context that em allocated for this request
+        Module.ccall('em_run_free',
+            'void', [ 'number' ], [ context ]);
     }
 
    // Fire end event
@@ -295,19 +345,14 @@ Module.include = async function(script, output) {
         }
     }));
 
-    // run the include, getting response address and length in return
-    let result = {
-        address: await Module.ccall(
-            'em_run_script',
-            'number',
-            [ 'string' ],
-            [ script ], { async: true }),
-        length: Module.ccall(
-            'em_run_length', 'number')
-    };
+    let context = await Module.ccall(
+        'em_run_script',
+        'number',
+        [ 'string' ],
+        [  script  ], { async: true });
 
     // check for errors
-    if (result.address < 0) {
+    if (context < 0) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('include.error', { 
             detail: { 
@@ -320,8 +365,18 @@ Module.include = async function(script, output) {
         throw new Error("Unexpected result, include failed");
     }
 
+    // the code ran, find the address and length of the result
+    let result = {
+        address: Module.ccall(
+            'em_run_result', 'number',
+                [ 'number' ], [ context ]),
+        length: Module.ccall(
+            'em_run_length', 'number',
+            [ 'number' ], [ context ])
+    };
+
     // ensure there's stuff to read on the heap
-    if (!result.length) {
+    if (!result.address || !result.length) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('include.error', { 
             detail: { 
@@ -330,6 +385,10 @@ Module.include = async function(script, output) {
                 "result": result }
         }));
 
+        // release the context that em allocated for this request
+        Module.ccall('em_run_free',
+            'void', [ 'number' ], [ context ]);
+
         // we don't need to care about freeing, nothing was allocated
         throw new Error("Unexpected result, no output");
     }
@@ -337,8 +396,10 @@ Module.include = async function(script, output) {
     let text = null;
 
     try {
-        // This ensures consistent encoding handling
-        text = Module.iou.fromBytes(result.address, result.length);
+        text = Module.encoding.latin1.out(
+            new Uint8Array(Module.HEAPU8.buffer,
+                result.address, result.length)
+        );
     } catch (exception) {
         // Fire exception event
         Module.dispatchEvent(new CustomEvent('include.exception', { 
@@ -445,19 +506,14 @@ Module.invoke = async function(input, output = undefined) {
         } 
     }));
 
-    // run the code, getting it's address and length in return
-    let result = {
-        address: await Module.ccall(
-            'em_run_string',
-            'number',
-            ['string', 'number'],
-            [ code.value, code.length ], { async: true }),
-        length: Module.ccall(
-            'em_run_length', 'number')
-    };
+    let context = await Module.ccall(
+        'em_run_string',
+        'number',
+        ['string', 'number'],
+        [ code.value, code.length ], { async: true });
 
     // check for errors
-    if (result.address < 0) {
+    if (context < 0) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('invoke.error', { 
             detail: { 
@@ -470,8 +526,18 @@ Module.invoke = async function(input, output = undefined) {
         throw new Error("Unexpected result, execution failed");
     }
 
+    // the code ran, find the address and length of the result
+    let result = {
+        address: Module.ccall(
+            'em_run_result', 'number',
+                [ 'number' ], [ context ]),
+        length: Module.ccall(
+            'em_run_length', 'number',
+            [ 'number' ], [ context ])
+    };
+
     // ensure there's stuff to read on the heap
-    if (!result.length) {
+    if (!result.address || !result.length) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('invoke.error', { 
             detail: { 
@@ -480,6 +546,10 @@ Module.invoke = async function(input, output = undefined) {
                 "result": result }
         }));
 
+        // release the context that em allocated for this request
+        Module.ccall('em_run_free',
+            'void', [ 'number' ], [ context ]);
+
         // we don't need to care about freeing, nothing was allocated
         throw new Error("Unexpected result, no output");
     }
@@ -487,8 +557,10 @@ Module.invoke = async function(input, output = undefined) {
     let text = null;
 
     try {
-        // This ensures consistent encoding handling
-        text = Module.iou.fromBytes(result.address, result.length);
+        text = Module.encoding.latin1.out(
+            new Uint8Array(Module.HEAPU8.buffer,
+                result.address, result.length)
+        );
     } catch (exception) {
         // Fire exception event
         Module.dispatchEvent(new CustomEvent('invoke.exception', { 
@@ -501,8 +573,9 @@ Module.invoke = async function(input, output = undefined) {
 
         throw exception;
     } finally {
-        // release the buffer that em alloc'd
-        Module.ccall('em_run_free');
+        // release the context that em allocated for this request
+        Module.ccall('em_run_free',
+            'void', [ 'number' ], [ context ]);
     }
 
    // Fire end event
@@ -986,8 +1059,12 @@ Module.vfs = {
             }
 
             this.header  = {
-                magic:   Module.iou.fromBytes(this.address, 6),    /* char[6] */
-                version: Module.iou.fromBytes(this.address+6, 6),  /* char[6] */
+                magic:   Module.encoding.latin1.out(  /* char[6] */
+                    new Uint8Array(Module.HEAPU8.buffer, this.address, 6)
+                ),
+                version: Module.encoding.latin1.out(  /* char[6] */
+                    new Uint8Array(Module.HEAPU8.buffer, this.address+6, 6)
+                ),
                 size: {
                     header:  this.int32(this.address +  12),       /* uint32_t */
                     length:  this.int32(this.address +  16),       /* uint32_t */
@@ -1007,7 +1084,7 @@ Module.vfs = {
                         (offsets) + record * 4));
             }
 
-            if (this.header.magic !== "EMFS1") {
+            if (this.header.magic !== "EMFS1\0") {
                 console.log(this);
                 throw new Error(
                     "Invalid Call, disk is not magic");
@@ -1094,9 +1171,10 @@ Module.vfs = {
             };
             parsing += 16;
 
-            // Name (UTF-8, null-terminated, size.name bytes)
-            this.name = Module.iou.fromBytes(
-                parsing, this.size.name);
+            // Name (null-terminated, size.name bytes)
+            this.name = Module.encoding.latin1.out(
+                new Uint8Array(Module.HEAPU8.buffer, parsing, this.size.name)
+            );
             this.data = null;
             if (this.kind === Module.vfs.EM_VFS_FILE && this.size.data > 0) {
                 this.data = Module.HEAPU8.slice(
@@ -1377,66 +1455,6 @@ Module.vfs = {
         ticking = null;
         path    = null;
         memory  = null;
-    }
-};
-
-/**
- * Shall provide buffer conversion from JS -> PHP and PHP -> JS
- */
-Module.iou = {
-    // JS → PHP: Convert JS string to raw bytes
-    toBytes: function(jsString, buffer) {
-        let written = 0;
-        for (let i = 0; i < jsString.length; i++) {
-            const code = jsString.charCodeAt(i);
-
-            if (code < 0x80) {
-                // ASCII - direct mapping
-                Module.HEAPU8[buffer + written] = code;
-                written++;
-            } else if (code < 0x800) {
-                // 2-byte UTF-8
-                Module.HEAPU8[buffer + written] = 0xC0 | (code >> 6);
-                Module.HEAPU8[buffer + written + 1] = 0x80 | (code & 0x3F);
-                written += 2;
-            } else {
-                // 3-byte UTF-8
-                Module.HEAPU8[buffer + written] = 0xE0 | (code >> 12);
-                Module.HEAPU8[buffer + written + 1] = 0x80 | ((code >> 6) & 0x3F);
-                Module.HEAPU8[buffer + written + 2] = 0x80 | (code & 0x3F);
-                written += 3;
-            }
-        }
-        return written;
-    },
-    
-    // Calculate byte length for JS string
-    getByteLength: function(jsString) {
-        let bytes = 0;
-        for (let i = 0; i < jsString.length; i++) {
-            const code = jsString.charCodeAt(i);
-            if (code < 0x80) {
-                bytes += 1;
-            } else if (code < 0x800) {
-                bytes += 2;
-            } else {
-                bytes += 3;
-            }
-        }
-        return bytes;
-    },
-
-    // PHP → JS: Convert raw bytes to JS string (Latin-1)
-    fromBytes: function(buffer, length) {
-        let jsString = Module.encoding.out.decode(
-            Module.HEAPU8.subarray(buffer, buffer + length)
-        );
-        // Stop at first null, like C strings
-        const nullIndex = jsString.indexOf('\x00');
-        if (nullIndex !== -1) {
-            jsString = jsString.substring(0, nullIndex);
-        }
-        return jsString;
     }
 };
 

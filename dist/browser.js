@@ -1,6 +1,3 @@
-const encoder = new TextEncoder("utf-8");
-const decoder = new TextDecoder("utf-8");
-
 window.browserTab = {
     type: 'browser',
     name: 'Browser',
@@ -61,7 +58,7 @@ class Browser {
                     `Loading ${event.data.url}`)
                 try {
                     const response = await Module.dispatch(
-                        encoder.encode(JSON.stringify({
+                        Module.encoding.latin1.in(JSON.stringify({
                             SERVER_HOSTNAME: window.location.hostname,
                             SERVER_POST:     window.location.port ?
                                                 window.location.port : 80,
@@ -102,9 +99,8 @@ class Browser {
                             headers: {
                                 'Content-Type': 'text/plain' 
                             },
-                            body: new Uint8Array(
-                                encoder.encode(
-                                    `Server Error: ${error.message}`))
+                            body: Module.encoding.latin1.in(
+                                `Server Error: ${error.message}`)
                         }
                     });
                 }

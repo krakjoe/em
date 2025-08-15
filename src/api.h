@@ -23,9 +23,14 @@
 #include <php.h>
 
 int EMSCRIPTEN_KEEPALIVE em_startup(void);
+void EMSCRIPTEN_KEEPALIVE em_shutdown(void);
 
 bool EMSCRIPTEN_KEEPALIVE em_env_import(
   const char* env, size_t length);
+
+/*
+* em_run_request/string/script API shall return a uintptr_t to the context
+*/
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
     const char* env,  size_t elen,
@@ -35,9 +40,14 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(
     const char* code, size_t length);
 uintptr_t EMSCRIPTEN_KEEPALIVE
   em_run_script(const char* script);
-size_t EMSCRIPTEN_KEEPALIVE em_run_length(void);
-void EMSCRIPTEN_KEEPALIVE em_run_free(void);
-void EMSCRIPTEN_KEEPALIVE em_shutdown(void);
+
+/**
+ * The caller of em_run_request/string/script must use the address to access
+ * the result and it's length, they are also responsible for freeing the context
+ */
+char* EMSCRIPTEN_KEEPALIVE em_run_result(uintptr_t address);
+size_t EMSCRIPTEN_KEEPALIVE em_run_length(uintptr_t address);
+void EMSCRIPTEN_KEEPALIVE em_run_free(uintptr_t address);
 
 zend_op_array* em_compile_script(
   const char* script);

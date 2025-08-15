@@ -48,7 +48,7 @@ sapi_header_struct* em_mutators_sizeof(em_dispatch_context_t* context) {
 }
 
 static void em_mutators_length(em_dispatch_context_t* context) {
-    em_dispatch_header("Content-Length: %d",
+    em_dispatch_header(context, "Content-Length: %d",
         context->buffers.response.body.length);
 }
 

@@ -28,12 +28,12 @@
 
 HashTable __em_environ__;
 
-void em_dispatch_file(sapi_request_info* info);
-void em_dispatch_script(sapi_request_info* info);
-void em_dispatch_code(sapi_request_info* info);
-void em_dispatch_api(sapi_request_info* info);
-void em_dispatch_exception(sapi_request_info* info);
-void em_dispatch_error(sapi_request_info* info);
+void em_dispatch_file(em_dispatch_context_t* context);
+void em_dispatch_script(em_dispatch_context_t* context);
+void em_dispatch_code(em_dispatch_context_t* context);
+void em_dispatch_api(em_dispatch_context_t* context);
+void em_dispatch_exception(em_dispatch_context_t* context);
+void em_dispatch_error(em_dispatch_context_t* context);
 
 typedef struct _em_dispatch_header_scan_t {
     struct {
@@ -89,9 +89,7 @@ typedef struct _em_dispatch_t {
     em_dispatch_handler_t handler;
 } em_dispatch_t;
 
-void em_dispatch_header(const char* format, ...) {
-    em_dispatch_context_t* context = SG(server_context);
-
+void em_dispatch_header(em_dispatch_context_t* context, const char* format, ...) {
     va_list args;
     va_start(args, format);
     sapi_header_line header;
@@ -173,12 +171,12 @@ void em_dispatch_header(const char* format, ...) {
 
 static em_dispatch_handler_t em_dispatch_select(const char* mime, sapi_request_info* info);
 
-static zend_always_inline void em_dispatch_nocache(void) {
-    em_dispatch_header(
+static zend_always_inline void em_dispatch_nocache(em_dispatch_context_t* context) {
+    em_dispatch_header(context,
         "Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate");
-    em_dispatch_header("Pragma", "no-cache");
-    em_dispatch_header("Expires: 0");
-    em_dispatch_header("Connection: close");
+    em_dispatch_header(context, "Pragma", "no-cache");
+    em_dispatch_header(context, "Expires: 0");
+    em_dispatch_header(context, "Connection: close");
 }
 
 static zend_always_inline int em_dispatch_readline(em_buffer_t *buffer, const char* format, ...) {
@@ -202,7 +200,7 @@ static zend_always_inline int em_dispatch_readline(em_buffer_t *buffer, const ch
     return result;
 }
 
-static zend_always_inline void em_dispatch_context_destroy(em_dispatch_context_t* context) {
+void em_dispatch_free(em_dispatch_context_t* context) {
     em_buffer_clear(&context->buffers.request.head, true);
     em_buffer_clear(&context->buffers.request.body, true);
 
@@ -290,9 +288,12 @@ static em_dispatch_context_t*
         pecalloc(1, sizeof(em_dispatch_context_t), 1);
     memset(context, 0, sizeof(em_dispatch_context_t));
 
-    em_buffer_clear(&context->buffers.response.head, false);
-    em_buffer_clear(&context->buffers.response.body, false);
-    em_buffer_clear(&context->buffers.response.join, false);
+    context->previous = (em_dispatch_context_previous_t) {
+        .context = SG(server_context),
+        .info    = SG(request_info)
+    };
+
+    context->info = info;
 
     em_buffer_clear(
         &context->buffers.request.head, false);
@@ -309,8 +310,6 @@ static em_dispatch_context_t*
         sizeof(em_dispatch_header_t),
         (llist_dtor_func_t)
             em_dispatch_header_free, 1);
-
-    context->info = info;
 
     zend_hash_init(
         &context->environ, 8, NULL, ZVAL_PTR_DTOR, 0);
@@ -332,9 +331,12 @@ static em_dispatch_context_t*
         pecalloc(1, sizeof(em_dispatch_context_t), 1);
     memset(context, 0, sizeof(em_dispatch_context_t));
 
-    em_buffer_clear(&context->buffers.response.head, false);
-    em_buffer_clear(&context->buffers.response.body, false);
-    em_buffer_clear(&context->buffers.response.join, false);
+    context->previous = (em_dispatch_context_previous_t) {
+        .context = SG(server_context),
+        .info    = SG(request_info)
+    };
+
+    context->info = info;
 
     em_buffer_write(
         &context->buffers.request.head, head, hlen);
@@ -352,16 +354,15 @@ static em_dispatch_context_t*
         (llist_dtor_func_t)
             em_dispatch_header_free, 1);
 
-    context->info = info;
-
     em_dispatch_header_scan_t scan = EM_DISPATCH_HEADER_SCAN_EMPTY;
     if (em_dispatch_readline(
             &context->buffers.request.head,
             "%[^ ] %[^\r\n]\r\n", /* METHOD URI\r\n */
             &scan.key.data,
             &scan.value.data) != 2) {
-        em_dispatch_context_destroy(context);
-        return NULL;
+        context->handler =
+            em_dispatch_exception;
+        return context;
     }
 
     em_dispatch_header_t *initial =
@@ -402,47 +403,42 @@ static em_dispatch_context_t*
         zval_copy_ctor);
     em_dispatch_env(
         &context->environ, env, elen, false);
+
     return context;
 }
 
-em_dispatch_handler_t em_dispatch_setup_script(
+em_dispatch_context_t* em_dispatch_enter_script(
     sapi_request_info* info,
     const char* script
 ) {
     em_dispatch_context_t* context =
         em_dispatch_context_create_empty(info);
 
-    if (!context) {
-        return em_dispatch_exception;
-    }
-
-    SG(server_context) = context;
-
     info->path_translated = estrdup(script);
 
-    return em_dispatch_script;
+    context->handler =
+        em_dispatch_script;
+
+    return (SG(server_context) = context);
 }
 
-em_dispatch_handler_t em_dispatch_setup_code(
+em_dispatch_context_t* em_dispatch_enter_code(
     sapi_request_info* info,
     const char* code, size_t length) {
     em_dispatch_context_t* context =
         em_dispatch_context_create_empty(info);
 
-    if (!context) {
-        return em_dispatch_exception;
-    }
-
-    SG(server_context) = context;
-
     em_buffer_write(
         &context->buffers.request.body,
         code, length);
 
-    return em_dispatch_code;  
+    context->handler =
+        em_dispatch_code;
+
+    return (SG(server_context) = context);  
 }
 
-em_dispatch_handler_t em_dispatch_setup(
+em_dispatch_context_t* em_dispatch_enter(
     sapi_request_info* info,
     const char* env,  size_t elen,
     const char* head, size_t hlen,
@@ -453,23 +449,18 @@ em_dispatch_handler_t em_dispatch_setup(
             env, elen,
             head, hlen,
             body, blen);
- 
-    if (!context) {
-        return em_dispatch_exception;
-    }
-
-    SG(server_context) =
-        (void*) context;
     zend_llist_position position;
     em_dispatch_header_t* header;
 
     memset(info, 0, sizeof(*info));
-    
+
     header = zend_llist_get_first_ex(
         &context->headers.request, &position);
 
     if (!header) {
-        return em_dispatch_exception;
+        context->handler =
+            em_dispatch_exception;
+        return context;
     }
 
     info->request_method = estrdup(header->key.data);
@@ -597,11 +588,13 @@ em_dispatch_handler_t em_dispatch_setup(
         } while ((*index));
     }
 
-    return em_dispatch_select(info->content_type, info);
+    context->handler =
+        em_dispatch_select(info->content_type, info);
+
+    return (SG(server_context) = context);
 }
 
-size_t em_dispatch_response(em_dispatch_selector_t selected, const char* buffer, size_t length) {
-    em_dispatch_context_t* context = SG(server_context);
+size_t em_dispatch_response(em_dispatch_context_t* context, em_dispatch_selector_t selected, const char* buffer, size_t length) {
     switch (selected) {
         case EM_DISPATCH_HEAD:
             return em_buffer_write(&context->buffers.response.head, buffer, length);
@@ -610,91 +603,99 @@ size_t em_dispatch_response(em_dispatch_selector_t selected, const char* buffer,
     }
 }
 
-void em_dispatch_cleanup(void) {
-    em_dispatch_context_destroy(SG(server_context));
+em_dispatch_context_t* em_dispatch_leave(em_dispatch_context_t* context) {
+    /** First we join this contexts buffer **/
+    em_buffer_join(&context->buffers.response.join,
+        &context->buffers.response.head,
+        &context->buffers.response.body);
+
+    /** Then we must restore the previous context and info */
+    SG(server_context) =
+        context->previous.context;
+    memcpy(
+        &SG(request_info),
+        &context->previous.info,
+        sizeof(sapi_request_info));
+    return context;
 }
 
-void em_dispatch_error(sapi_request_info* info) {
-    em_dispatch_header("Status: 400 Not Found");
-    em_dispatch_header("Content-Type: text/plain");
-    em_dispatch_nocache();
+void em_dispatch_error(em_dispatch_context_t* context) {
+    em_dispatch_header(context, "Status: 400 Not Found");
+    em_dispatch_header(context, "Content-Type: text/plain");
+    em_dispatch_nocache(context);
 }
 
-void em_dispatch_exception(sapi_request_info* info) {
-    em_dispatch_header("Status: 500 Internal Server Error");
-    em_dispatch_header("Content-Type: text/plain");
-    em_dispatch_nocache();
+void em_dispatch_exception(em_dispatch_context_t* context) {
+    em_dispatch_header(context, "Status: 500 Internal Server Error");
+    em_dispatch_header(context, "Content-Type: text/plain");
+    em_dispatch_nocache(context);
 }
 
-void em_dispatch_api(sapi_request_info* info) {
-    em_dispatch_header("Status: 200 OK");
-    em_dispatch_header("Content-Type: text/plain");
+void em_dispatch_api(em_dispatch_context_t* context) {
+    em_dispatch_header(context, "Status: 200 OK");
+    em_dispatch_header(context, "Content-Type: text/plain");
 }
 
-void em_dispatch_file(sapi_request_info* info) {
-    em_dispatch_context_t* context = SG(server_context);
+void em_dispatch_file(em_dispatch_context_t* context) {
 
     const char* address =
-        em_vfs_get_address(info->path_translated);
+        em_vfs_get_address(context->info->path_translated);
 
     if (!address) {
-        em_dispatch_error(info);
+        em_dispatch_error(context);
         return;
     }
 
     ssize_t length =
-        em_vfs_get_length(info->path_translated);
+        em_vfs_get_length(context->info->path_translated);
 
     if (length < 0) {
-        em_dispatch_exception(info);
+        em_dispatch_exception(context);
         return;
     }
 
-    em_dispatch_header("Status: 200 OK");
-    em_dispatch_header("Content-Type: %s",
-        em_dispatch_mime(info,
+    em_dispatch_header(context, "Status: 200 OK");
+    em_dispatch_header(context, "Content-Type: %s",
+        em_dispatch_mime(context->info,
             "application/octet-stream"));
-    em_dispatch_header("Content-Length: %zu", length);
-    em_dispatch_nocache();
-    em_dispatch_response(
+    em_dispatch_header(context, "Content-Length: %zu", length);
+    em_dispatch_nocache(context);
+    em_dispatch_response(context,
         EM_DISPATCH_BODY, address, length);
     em_mutators_mutate(context);
 }
 
-void em_dispatch_script(sapi_request_info* info) {
-    em_dispatch_context_t* context = SG(server_context);
+void em_dispatch_script(em_dispatch_context_t* context) {
     zend_op_array* ops =
         em_compile_script(
-            info->path_translated);
+            context->info->path_translated);
 
     if (!ops) {
-        em_dispatch_exception(info);
+        em_dispatch_exception(context);
         return;
     }
 
-    em_dispatch_header(
+    em_dispatch_header(context,
         "Status: 200 OK");
-    em_dispatch_nocache();
+    em_dispatch_nocache(context);
     em_execute(ops);
     em_mutators_mutate(context);
 }
 
-void em_dispatch_code(sapi_request_info* info) {
-    em_dispatch_context_t* context = SG(server_context);
-
+void em_dispatch_code(em_dispatch_context_t* context) {
     zend_op_array* ops =
         em_compile_string(
             context->buffers.request.body.value,
             context->buffers.request.body.length);
 
     if (!ops) {
-        em_dispatch_exception(info);
+        em_dispatch_exception(context);
         return;
     }
 
-    em_dispatch_header(
+    em_dispatch_header(context,
         "Status: 200 OK");
-    em_dispatch_nocache();
+    em_dispatch_nocache(context);
     em_execute(ops);
     em_mutators_mutate(context);
 }

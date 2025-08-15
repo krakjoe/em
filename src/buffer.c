@@ -23,7 +23,9 @@
 void em_buffer_clear(em_buffer_t* buffer, bool _free) {
     if (buffer->value) {
         if (_free) {
-            free(buffer->value);
+            if (buffer->value) {
+                free(buffer->value);
+            }
 
             buffer->value = NULL;
             buffer->max   = 0;
@@ -61,4 +63,34 @@ size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len) {
     buffer->value[
         buffer->length] = 0;
     return len;
+}
+
+static size_t
+    em_buffer_copy(
+        em_buffer_t* target,
+        em_buffer_t* source) {
+    memcpy(
+        target,
+        source,
+        sizeof(em_buffer_t));
+    if (target->value) {
+        target->value =
+            pecalloc(1, source->length, 1);
+        memcpy(
+            target->value,
+            source->value,
+            source->length);
+    }
+    return target->length;
+}
+
+size_t em_buffer_join(
+  em_buffer_t* buffer, em_buffer_t* head, em_buffer_t* body) {
+  em_buffer_clear(buffer, true);
+  em_buffer_write(
+    buffer, head->value, head->length);
+  em_buffer_write(
+    buffer, body->value, body->length);
+  buffer->value[buffer->length] = 0;
+  return buffer->length;
 }

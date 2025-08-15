@@ -33,18 +33,6 @@ typedef struct _em_buffer_t {
 #define EM_BUFFER_EMPTY (em_buffer_t) {NULL, 0, 0, 0}
 
 size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len);
-
 void em_buffer_clear(em_buffer_t* buffer, bool _free);
-
-static zend_always_inline size_t em_buffer_join(
-  em_buffer_t* buffer, em_buffer_t* head, em_buffer_t* body) {
-  em_buffer_clear(buffer, false);
-  em_buffer_write(
-    buffer, head->value, head->length);
-  em_buffer_write(
-    buffer, body->value, body->length);
-
-  buffer->value[buffer->length] = 0;
-  return buffer->length;
-}
+size_t em_buffer_join(em_buffer_t* buffer, em_buffer_t* head, em_buffer_t* body);
 #endif

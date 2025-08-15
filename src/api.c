@@ -91,7 +91,7 @@ void em_buffer_log(const char* message, int type) {
         message
     );
 
-    em_dispatch_response(EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_dispatch_response(SG(server_context), EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 
@@ -103,7 +103,7 @@ void em_buffer_error(int type, const char* file, const uint32_t lineno, zend_str
         lineno,
         ZSTR_VAL(message)
     );
-    em_dispatch_response(EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_dispatch_response(SG(server_context), EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 #else
@@ -114,7 +114,7 @@ void em_buffer_error(int type, zend_string* file, const uint32_t lineno, zend_st
         lineno,
         ZSTR_VAL(message)
     );
-    em_dispatch_response(EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
+    em_dispatch_response(SG(server_context), EM_DISPATCH_BODY, ZSTR_VAL(msg), ZSTR_LEN(msg));
     zend_string_release(msg);
 }
 #endif /* }}} */
@@ -315,80 +315,78 @@ bool EMSCRIPTEN_KEEPALIVE em_env_import(const char* env, size_t elen) {
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(const char* code, size_t length) {
-    sapi_request_info* info = &SG(request_info);
-    em_dispatch_handler_t em_dispatch_request =
-        em_dispatch_setup_code(info, code, length);
-    em_dispatch_context_t* context = SG(server_context);
+    em_dispatch_context_t* context =
+        em_dispatch_enter_code(
+            &SG(request_info), code, length);
 
     if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
-    em_dispatch_request(info);
+    context->handler(context);
+
     em_deactivate();
 
-    em_buffer_join(&context->buffers.response.join,
-        &context->buffers.response.head,
-        &context->buffers.response.body);
-
-    return (uintptr_t) context->buffers.response.join.value;
+    return (uintptr_t) em_dispatch_leave(context);
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_script(const char* script) {
-    sapi_request_info* info = &SG(request_info);
-    em_dispatch_handler_t em_dispatch_request =
-        em_dispatch_setup_script(info, script);
-    em_dispatch_context_t* context = SG(server_context);
+    em_dispatch_context_t* context =
+        em_dispatch_enter_script(
+            &SG(request_info), script);
 
     if (em_activate(false) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
-    em_dispatch_request(info);
+    context->handler(context);
+
     em_deactivate();
 
-    em_buffer_join(&context->buffers.response.join,
-        &context->buffers.response.head,
-        &context->buffers.response.body);
-
-    return (uintptr_t) context->buffers.response.join.value;
+    return (uintptr_t) em_dispatch_leave(context);
 }
 
 uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
     const char* env,  size_t elen,
     const char* head, size_t hlen,
     const char* body, size_t blen) {
-    sapi_request_info* info = &SG(request_info);
-    em_dispatch_handler_t em_dispatch_request =
-        em_dispatch_setup(
-            info,
+    em_dispatch_context_t* context =
+        em_dispatch_enter(
+            &SG(request_info),
             env,  elen,
             head, hlen,
             body, blen);
-    em_dispatch_context_t* context = SG(server_context);
 
     if (em_activate(true) != SUCCESS) {
         return (uintptr_t) -1;
     }
 
-    em_dispatch_request(info);
+    context->handler(context);
+
     em_deactivate();
 
-    em_buffer_join(&context->buffers.response.join,
-        &context->buffers.response.head,
-        &context->buffers.response.body);
-
-    return (uintptr_t) context->buffers.response.join.value;
+    return (uintptr_t) em_dispatch_leave(context);
 }
 
-size_t EMSCRIPTEN_KEEPALIVE em_run_length(void) {
-    em_dispatch_context_t* context = 
-        SG(server_context);
+char* EMSCRIPTEN_KEEPALIVE em_run_result(uintptr_t address) {
+    em_dispatch_context_t* context =
+        (em_dispatch_context_t*) address;
+    return context->buffers.response.join.value;
+}
+
+size_t EMSCRIPTEN_KEEPALIVE em_run_length(uintptr_t address) {
+    em_dispatch_context_t* context =
+        (em_dispatch_context_t*) address;
     return context->buffers.response.join.length;
 }
 
-void EMSCRIPTEN_KEEPALIVE em_run_free(void) {
-    em_dispatch_cleanup();
+void EMSCRIPTEN_KEEPALIVE em_run_free(uintptr_t address) {
+    if (!address) {
+        return;
+    }
+
+    em_dispatch_free(
+        (em_dispatch_context_t*) address);
 }
 
 void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
@@ -406,10 +404,6 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
 #ifdef ZTS
     tsrm_shutdown();
 #endif
-
-    if (em_sapi_module.ini_entries) {
-        free((void*)em_sapi_module.ini_entries);
-    }
 } /* }}} */
 
 /* {{{ sapi gubbins */
@@ -537,20 +531,20 @@ static int em_sapi_headers(sapi_headers_struct* all) {
             strchr(status->header, ':');
 
         if (http) {
-            em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("HTTP/1.0"));
-            em_dispatch_response(EM_DISPATCH_HEAD, http + 1, strlen(http + 1));
+            em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, ZEND_STRL("HTTP/1.0"));
+            em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, http + 1, strlen(http + 1));
         } else {
-            em_dispatch_response(EM_DISPATCH_HEAD, status->header, status->header_len);
+            em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, status->header, status->header_len);
         }
 
-        em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
+        em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
     } else {
         char buffer[4096];
         snprintf(buffer, 4096,
             "HTTP/1.0 %d %s",
             all->http_response_code, all->http_status_line);
-        em_dispatch_response(EM_DISPATCH_HEAD, buffer, strlen(buffer));
-        em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
+        em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, buffer, strlen(buffer));
+        em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
     }
     
     /* send remainder of headers */
@@ -564,12 +558,12 @@ static int em_sapi_headers(sapi_headers_struct* all) {
             continue;
         }
 
-        em_dispatch_response(EM_DISPATCH_HEAD, next->header, next->header_len);
-        em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
+        em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, next->header, next->header_len);
+        em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
     } while ((next = zend_llist_get_next_ex(&all->headers, &position)));
 
 __em_sapi_headers_leave:
-    em_dispatch_response(EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
+    em_dispatch_response(SG(server_context), EM_DISPATCH_HEAD, ZEND_STRL("\r\n"));
 
     return SAPI_HEADER_SENT_SUCCESSFULLY;
 }

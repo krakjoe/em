@@ -23,8 +23,6 @@ let editor = null;
 let currentContextPath = null;
 let isReady = false;
 let currentPHPVersion;
-let vfsDecoder = new TextDecoder('utf-8');
-let vfsEncoder = new TextEncoder('utf-8');
 
 const tabBar = document.getElementById('tabBar');
 const tabContainer = document.querySelector('.tab-container');
@@ -418,7 +416,7 @@ function openFile(path) {
     let fileTab = openTabs.find(tab => tab.path === path);
 
     try {
-        const vfsContent = vfsDecoder.decode(content);
+        const vfsContent = Module.encoding.latin1.out(content);
 
         if (!fileTab) {
             // Create a new tab for new content
@@ -487,9 +485,8 @@ async function saveCurrentFile() {
     }
 
     try {
-        // Always encode as UTF-8 Uint8Array
         const value = editor.getValue();
-        if (Module.vfs.put(currentOpenTab.path, vfsEncoder.encode(value))) {
+        if (Module.vfs.put(currentOpenTab.path, Module.encoding.latin1.in(value))) {
             currentOpenTab.unsaved    = false;
             currentOpenTab.vfsContent = value;
             updateStatus(
@@ -596,7 +593,7 @@ async function createFile() {
     try {
         const success = Module.vfs.put(
             filename,
-            vfsEncoder.encode(
+            Module.encoding.latin1.in(
                 '/* ' + filename + ' */')
         );
         if (success) {
@@ -1222,8 +1219,8 @@ async function loadGithubRepo(repoInput) {
                     contentBytes[j] = binaryStr.charCodeAt(j);
                 }
             } else {
-                // Fallback: treat as UTF-8 string
-                contentBytes = vfsEncoder.encode(blob.content);
+                contentBytes =
+                    Module.encoding.latin1.in(blob.content);
             }
             Module.vfs.put('/' + entry.path, contentBytes);
             fileCount++;
@@ -1260,9 +1257,8 @@ async function loadGithubGist(gistInput) {
             const [fname, file] = files[i];
             updateProgressBar(`Fetching: ${fname}`, i, total);
             if (file && file.content !== undefined) {
-                // Always encode as UTF-8 bytes for VFS
-                const contentBytes = vfsEncoder.encode(file.content);
-                Module.vfs.put('/' + fname, contentBytes);
+                Module.vfs.put('/' + fname,
+                    Module.encoding.latin1.in(file.content));
                 fileCount++;
             }
         }
@@ -1303,7 +1299,8 @@ async function runCode() {
         if (currentOpenTab.unsaved) {
             const currentOpenTabContent = editor.getValue();
             if (Module.vfs.put(
-                    currentOpenTab.path, vfsEncoder.encode(currentOpenTabContent))) {
+                    currentOpenTab.path,
+                    Module.encoding.latin1.in(currentOpenTabContent))) {
                 currentOpenTab.content = currentOpenTabContent;
                 currentOpenTab.unsaved = false;
                 updateStatus(`Saved: ${currentOpenTab.path}`, 'success');
