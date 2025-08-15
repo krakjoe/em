@@ -242,114 +242,114 @@ class EmTestRunner {
             this.Module.vfs.reset();
         }
     }
-    
-    async runPhptTest(testFile) {
+
+    runPhptTest(testFile) {
         const content = fs.readFileSync(testFile, 'utf8');
         const sections = this.parsePhptFile(content);
-        
-        // Check for SKIP section
+
+        // SKIP section
         if (sections.SKIP) {
             const skipCode = sections.SKIP.trim();
             if (skipCode) {
-                try {
-                    const skipResult = this.Module.invoke(skipCode);
-                    if (skipResult.trim()) {
-                        return {
-                            status: 'skipped',
-                            message: skipResult.trim(),
-                            output: null,
-                            expected: null,
-                            actual: null
-                        };
-                    }
-                } catch (e) {
-                    // If skip code fails, continue with test
-                }
+                return this.Module.invoke(skipCode)
+                    .then(skipResult => {
+                        if (skipResult.trim()) {
+                            return {
+                                status: 'skipped',
+                                message: skipResult.trim(),
+                                output: null,
+                                expected: null,
+                                actual: null
+                            };
+                        }
+                        // Continue to test if not skipped
+                        return this._runPhptFileSection(sections);
+                    })
+                    .catch(() => this._runPhptFileSection(sections));
             }
         }
-        
-        // Run the test
+        return this._runPhptFileSection(sections);
+    }
+
+    _runPhptFileSection(sections) {
         if (!sections.FILE) {
             throw new Error('No --FILE-- section found');
         }
-        
         const testCode = sections.FILE;
-        let output;
-        
-        try {
-            output = this.Module.invoke(testCode);
-        } catch (error) {
-            return {
-                status: 'failed',
-                message: `Runtime error: ${error.message}`,
-                output: null,
-                expected: sections.EXPECT || sections.EXPECTF || null,
-                actual: null
-            };
-        }
-        
-        // Compare output
-        if (sections.EXPECT) {
-            const expected = sections.EXPECT.trim();
-            const actual = output.trim();
-            
-            if (expected === actual) {
-                return {
-                    status: 'passed',
-                    message: 'Output matches expected',
-                    output: actual,
-                    expected: expected,
-                    actual: actual
-                };
-            } else {
+        return this.Module.invoke(testCode)
+            .then(output => {
+                // Compare output
+                if (sections.EXPECT) {
+                    const expected = sections.EXPECT.trim();
+                    const actual = output.replace(/\u0000+$/, '').trim();
+                    
+                    if (expected === actual) {
+                        return {
+                            status: 'passed',
+                            message: 'Output matches expected',
+                            output: actual,
+                            expected: expected,
+                            actual: actual
+                        };
+                    } else {
+                        return {
+                            status: 'failed',
+                            message: 'Output mismatch',
+                            output: actual,
+                            expected: expected,
+                            actual: actual
+                        };
+                    }
+                } else if (sections.EXPECTF) {
+                    // Simple pattern matching for EXPECTF
+                    const pattern = sections.EXPECTF.trim();
+                    const actual = output.replace(/\u0000+$/, '').trim();
+                    
+                    // Convert simple %s, %d patterns to regex
+                    const regexPattern = pattern
+                        .replace(/%s/g, '.*?')
+                        .replace(/%d/g, '\\d+')
+                        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    
+                    const regex = new RegExp(`^${regexPattern}$`, 'm');
+                    
+                    if (regex.test(actual)) {
+                        return {
+                            status: 'passed',
+                            message: 'Output matches pattern',
+                            output: actual,
+                            expected: pattern,
+                            actual: actual
+                        };
+                    } else {
+                        return {
+                            status: 'failed',
+                            message: 'Output does not match pattern',
+                            output: actual,
+                            expected: pattern,
+                            actual: actual
+                        };
+                    }
+                } else {
+                    // No expectation - just check if it runs without error
+                    return {
+                        status: 'passed',
+                        message: 'Test executed successfully',
+                        output: output,
+                        expected: null,
+                        actual: output
+                    };
+                }
+            })
+            .catch(error => {
                 return {
                     status: 'failed',
-                    message: 'Output mismatch',
-                    output: actual,
-                    expected: expected,
-                    actual: actual
+                    message: `Runtime error: ${error.message}`,
+                    output: null,
+                    expected: sections.EXPECT || sections.EXPECTF || null,
+                    actual: null
                 };
-            }
-        } else if (sections.EXPECTF) {
-            // Simple pattern matching for EXPECTF
-            const pattern = sections.EXPECTF.trim();
-            const actual = output.trim();
-            
-            // Convert simple %s, %d patterns to regex
-            const regexPattern = pattern
-                .replace(/%s/g, '.*?')
-                .replace(/%d/g, '\\d+')
-                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            
-            const regex = new RegExp(`^${regexPattern}$`, 'm');
-            
-            if (regex.test(actual)) {
-                return {
-                    status: 'passed',
-                    message: 'Output matches pattern',
-                    output: actual,
-                    expected: pattern,
-                    actual: actual
-                };
-            } else {
-                return {
-                    status: 'failed',
-                    message: 'Output does not match pattern',
-                    output: actual,
-                    expected: pattern,
-                    actual: actual
-                };
-            }
-        } else {
-            // No expectation - just check if it runs without error
-            return {
-                status: 'passed',
-                message: 'Test executed successfully',
-                output: output,
-                expected: null,
-                actual: output
-            };
-        }
+            });
     }
     
     async runJsTest(testFile) {
@@ -434,7 +434,7 @@ class EmTestRunner {
                 'assertArray',
                 'console',
                 content);
-            const result = testFunction(testContext.Module,
+            const result = await testFunction(testContext.Module,
                 testContext.assert,
                 testContext.assertEquals,
                 testContext.assertContains,
