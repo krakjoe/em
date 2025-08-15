@@ -1007,7 +1007,7 @@ Module.vfs = {
                         (offsets) + record * 4));
             }
 
-            if (this.header.magic !== "EMFS1\0") {
+            if (this.header.magic !== "EMFS1") {
                 console.log(this);
                 throw new Error(
                     "Invalid Call, disk is not magic");
@@ -1428,12 +1428,15 @@ Module.iou = {
 
     // PHP → JS: Convert raw bytes to JS string (Latin-1)
     fromBytes: function(buffer, length) {
-        let result = '';
-        for(let i = 0; i < length; i++) {
-            result += String.fromCharCode(
-                Module.HEAPU8[buffer + i]);
+        let jsString = Module.encoding.out.decode(
+            Module.HEAPU8.subarray(buffer, buffer + length)
+        );
+        // Stop at first null, like C strings
+        const nullIndex = jsString.indexOf('\x00');
+        if (nullIndex !== -1) {
+            jsString = jsString.substring(0, nullIndex);
         }
-        return result;
+        return jsString;
     }
 };
 

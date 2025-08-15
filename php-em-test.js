@@ -281,7 +281,7 @@ class EmTestRunner {
                 // Compare output
                 if (sections.EXPECT) {
                     const expected = sections.EXPECT.trim();
-                    const actual = output.replace(/\u0000+$/, '').trim();
+                    const actual = output.trim();
                     
                     if (expected === actual) {
                         return {
@@ -303,7 +303,7 @@ class EmTestRunner {
                 } else if (sections.EXPECTF) {
                     // Simple pattern matching for EXPECTF
                     const pattern = sections.EXPECTF.trim();
-                    const actual = output.replace(/\u0000+$/, '').trim();
+                    const actual = output.trim();
                     
                     // Convert simple %s, %d patterns to regex
                     const regexPattern = pattern
