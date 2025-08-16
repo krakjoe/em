@@ -13,8 +13,8 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
-EM_SQLITE3_URL   = https://sqlite.org/src/tarball/sqlite.tar.gz?r=release
-EM_SQLITE3_TAR   = $(EM_RECIPE_OUT)/sqlite3.tar.gz
+EM_SQLITE3_URL   = https://github.com/sqlite/sqlite/archive/refs/tags/version-3.50.4.tar.gz
+EM_SQLITE3_TAR   = $(EM_RECIPE_OUT)/sqlite-3.50.4.tar.gz
 EM_SQLITE3_SRC   = $(EM_RECIPE_OUT)/sqlite3
 EM_SQLITE3_LIB   = $(EM_SQLITE3_SRC)/lib/libsqlite3.a
 EM_SQLITE3_INC   = $(EM_SQLITE3_SRC)/include
