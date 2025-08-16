@@ -20,9 +20,105 @@
 #include "node.h"
 #include "memory.h"
 
+typedef struct _em_vfs_memory_version_t {
+    int      major;
+    int      minor;
+    int      patch;
+    uint64_t combined;
+} em_vfs_memory_version_t;
+
+static em_vfs_memory_entry_flags_t
+    em_vfs_memory_data_flags(
+        em_vfs_node_t *node) {
+    if (node->kind == EM_VFS_DIR) {
+        return EM_VFS_MEMORY_VERBATIM;
+    }
 #ifdef HAVE_EM_ZLIB
-#include <zlib.h>
+    if (node->data.file.size < EM_VFS_MEMORY_ZLIB_MIN) {
+        return EM_VFS_MEMORY_VERBATIM;
+    }
+    return EM_VFS_MEMORY_COMPRESSED;
 #endif
+    return EM_VFS_MEMORY_VERBATIM;
+}
+
+static em_vfs_memory_entry_size_t em_vfs_memory_data_length(em_vfs_node_t* node) {
+    if (node->kind == EM_VFS_DIR) {
+        return (em_vfs_memory_entry_size_t) {0, 0};
+    }
+
+#ifdef HAVE_EM_ZLIB
+    if (node->data.file.size < EM_VFS_MEMORY_ZLIB_MIN) {
+        return (em_vfs_memory_entry_size_t) {
+            .verbatim = node->data.file.size,
+            .compressed = 0
+        };
+    }
+
+    return (em_vfs_memory_entry_size_t) {
+        .verbatim   = node->data.file.size,
+        .compressed = compressBound(
+            node->data.file.size)
+    };
+#endif
+    return (em_vfs_memory_entry_size_t) {
+        .verbatim = node->data.file.size,
+        .compressed = 0
+    };
+}
+
+static void em_vfs_memory_data_free(em_vfs_node_t* node, em_vfs_memory_entry_t* entry, void* copy) {
+#ifdef HAVE_EM_ZLIB
+    if (node->data.file.size < EM_VFS_MEMORY_ZLIB_MIN) {
+        /* compression was never attempted */
+        return;
+    }
+
+    if (!(entry->flags & EM_VFS_MEMORY_COMPRESSED)) {
+        /* compression recovered from errors */
+        return;
+    }
+
+    free(copy);
+#endif
+}
+
+static void* em_vfs_memory_data_alloc(em_vfs_node_t* node, em_vfs_memory_entry_t *entry) {
+#ifdef HAVE_EM_ZLIB
+    if (node->data.file.size < EM_VFS_MEMORY_ZLIB_MIN) {
+        return node->data.file.content;
+    }
+
+    void* copy = malloc(entry->size.data.compressed);
+
+    if (!copy) {
+        fprintf(stderr,
+            "[memory] %s failed to allocate for compression\n",
+            node->name);
+        goto __em_vfs_memory_data_alloc_recover;
+    }
+
+    if (compress2(
+        (Bytef*) copy,
+            (uLongf*) &entry->size.data.compressed,
+        (const Bytef *) node->data.file.content,
+            node->data.file.size,
+        EM_VFS_MEMORY_ZLIB_LEVEL) != Z_OK) {
+        goto __em_vfs_memory_data_alloc_recover;
+    }
+
+    return copy;
+
+__em_vfs_memory_data_alloc_recover: {
+        /* recover from compression errors */
+        if (copy) {
+            free(copy);
+        }
+        entry->flags &= ~EM_VFS_MEMORY_COMPRESSED;
+    }
+#endif
+    return node->data.file.content;
+}
 
 static size_t em_vfs_memory_path_length(em_vfs_node_t* node) {
     size_t length = 1; // Leading '/'
@@ -89,14 +185,12 @@ static size_t
     *offsets = (uint32_t)((char*)(*entry) - (char*)start);
 
     // Fill in the entry struct
-    (*entry)->kind = node->kind;
-    (*entry)->flags      = 0;
+    (*entry)->kind       = node->kind;
+    (*entry)->flags      = em_vfs_memory_data_flags(node);
     (*entry)->reserved   = 0;
     (*entry)->size.entry = sizeof(em_vfs_memory_entry_t);
     (*entry)->size.name  = em_vfs_memory_path_length(node);
-    (*entry)->size.data  =
-        (node->kind == EM_VFS_FILE) ?
-            node->data.file.size : 0;
+    (*entry)->size.data  = em_vfs_memory_data_length(node);
     (*entry)->stat.ctime =
         (node->kind == EM_VFS_FILE) ?
             node->data.file.created :
@@ -120,11 +214,21 @@ static size_t
     if ((node->kind == EM_VFS_FILE) &&
         (node->data.file.size > 0)) {
         void *data = named + (*entry)->size.name;
-        memcpy(data,
-            node->data.file.content,
-            node->data.file.size);
-        // Increase entry size by file size
-        (*entry)->size.entry += node->data.file.size;
+        void *copy =
+            em_vfs_memory_data_alloc(
+                node, (*entry));
+
+        if ((*entry)->flags & EM_VFS_MEMORY_COMPRESSED) {
+            memcpy(data, copy, (*entry)->size.data.compressed);
+            (*entry)->size.entry +=
+                (*entry)->size.data.compressed;
+        } else {
+            memcpy(data, copy, (*entry)->size.data.verbatim);
+            (*entry)->size.entry +=
+                (*entry)->size.data.verbatim;
+        }
+
+        em_vfs_memory_data_free(node, (*entry), copy);
     }
 
     // Advance entry pointer for next record
@@ -197,9 +301,19 @@ static em_vfs_memory_header_t* em_vfs_memory_calculate(em_vfs_node_t* node) {
         /* reserve memory for entry */
         result->size.length +=
             sizeof(em_vfs_memory_entry_t) +      /* necessary for entry */
-            (em_vfs_memory_path_length(child)) + /* null terminated name */
-            ((child->kind == EM_VFS_FILE) ?      /* size of the file */
-                child->data.file.size : 0); 
+            (em_vfs_memory_path_length(child)); /* null terminated name */ 
+
+        /* reserve memory for data */
+        em_vfs_memory_entry_size_t size =
+            em_vfs_memory_data_length(child);
+
+        if (size.compressed) {
+            result->size.length +=
+                size.compressed;
+        } else {
+            result->size.length +=
+                size.verbatim;
+        }
 
         /* reserve memory at end of header for offset */
         result->size.header += sizeof(uint32_t);
@@ -229,8 +343,8 @@ static uintptr_t em_vfs_memory_export(em_vfs_node_t* node, em_vfs_memory_header_
         pecalloc(1, calculator->size.consumed, 1);
 
     memcpy(result, calculator,  sizeof(em_vfs_memory_header_t));
-    memcpy(result->magic,       ZEND_STRL("EMFS1\0"));
-    memcpy(result->version,     ZEND_STRL("0.0.1\0"));
+    memcpy(result->magic,       ZEND_STRL(EM_VFS_MEMORY_MAGIC));
+    memcpy(result->version,     ZEND_STRL(EM_VFS_MEMORY_VERSION));
 
     uint32_t *offsets =
         (uint32_t*)
@@ -277,6 +391,74 @@ void EMSCRIPTEN_KEEPALIVE em_vfs_memory_free(void* memory) {
 }
 
 /**
+ * Shall parse version from string return indicator of success
+ */
+bool em_vfs_memory_version(em_vfs_memory_version_t* versioned, const char* version) {
+    if (sscanf(version,
+            "%d.%d.%d",
+            &versioned->major,
+            &versioned->minor,
+            &versioned->patch) != 3) {
+        return false;
+    }
+
+    versioned->combined =
+        (versioned->major << 16) |
+        (versioned->minor << 8)  |
+        (versioned->patch << 0);
+
+    return true;
+}
+
+/**
+ * Check a given version may be loaded in this runtime
+ * Note: for now just refuse to load anything from a later runtime
+ */
+bool em_vfs_memory_version_allowed(const char* version, char* error, size_t elength) {
+    em_vfs_memory_version_t runtime;
+    em_vfs_memory_version(
+        &runtime,
+        EM_VFS_MEMORY_VERSION);
+
+    em_vfs_memory_version_t memory;
+    if (!em_vfs_memory_version(&memory,  version)) {
+        snprintf(error, elength,
+            "the disk provided has a version (v%s) that cannot be parsed, "
+            "it may be corrupt",
+            version);
+        return false;
+    }
+
+    if (runtime.combined < memory.combined) {
+        snprintf(error, elength,
+            "the disk provided was created in a more recent runtime "
+            "(v%s) and cannot be loaded in the current runtime (v%s), "
+            "please upgrade your runtime to use the disk",
+            version, EM_VFS_MEMORY_VERSION);
+        return false;
+    }
+
+    if (memory.major > runtime.major) {
+        snprintf(error, elength,
+            "the disk provided was created in v%d, "
+            "the current runtime v%d is not able to load it",
+            memory.major, runtime.major);
+        return false;
+    }
+
+    if (memory.minor > runtime.minor) {
+        snprintf(error, elength,
+            "the disk provided was created in v%d.%d, "
+            "the current runtime v%d.%d is not able to load it",
+            memory.major, memory.minor,
+            runtime.major, runtime.minor);
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * Shall load the memory pointed into the vfs
  * Shall start at offset-nth record (if given) and continue for records (if given)
  * Start at 0, for 0 records to load everything
@@ -285,8 +467,16 @@ void EMSCRIPTEN_KEEPALIVE em_vfs_memory_free(void* memory) {
 size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, size_t records) {
     em_vfs_memory_header_t* header =
         (em_vfs_memory_header_t*) memory;
-    if (!header ||
-        header->size.records == 0) {
+    if (!header || header->size.records == 0) {
+        return 0;
+    }
+
+    char verror[1024];
+    if (!em_vfs_memory_version_allowed(
+            (char*) header->version,
+            verror, sizeof(verror))) {
+        fprintf(stderr,
+            "[memory] %s", verror);
         return 0;
     }
 
@@ -316,12 +506,59 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
         void* data =
             name + entry->size.name;
 
+#ifndef HAVE_EM_ZLIB
+        if (entry->flags & EM_VFS_MEMORY_COMPRESSED) {
+            fprintf(stderr,
+                "[memory] %s cannot decompress, no zlib support\n",
+                name);
+            continue;
+        }
+#endif
+
         if (entry->kind == EM_VFS_DIR) {
             if (em_vfs_mkdir(name)) {
                 records++;
             }
         } else if (entry->kind == EM_VFS_FILE) {
-            if (em_vfs_put(name, (const char*)data, entry->size.data)) {
+            if (entry->flags & EM_VFS_MEMORY_COMPRESSED) {
+#ifdef HAVE_EM_ZLIB
+                void* copy = malloc(entry->size.data.verbatim);
+                if (!copy) {
+                    fprintf(stderr,
+                        "[memory] %s failed to allocate for decompression\n",
+                        name);
+                    continue;
+                }
+
+                int zrc = uncompress(
+                    (Bytef*) copy,
+                    (uLongf *)
+                        &entry->size.data.verbatim,
+                    data,
+                    entry->size.data.compressed);
+
+                if (zrc != Z_OK) {
+                    fprintf(stderr,
+                        "[memory] %s failed to decompress, zrc=%d\n",
+                        name, zrc);
+                    free(copy);
+                    continue;
+                }
+
+                if (em_vfs_put(name,
+                        copy,
+                        entry->size.data.verbatim)) {
+                    records++;
+                }
+
+                free(copy);
+                continue;
+#endif
+            }
+
+            if (em_vfs_put(name,
+                    (const char*)data,
+                    entry->size.data.verbatim)) {
                 records++;
             }
         }

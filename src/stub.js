@@ -1130,6 +1130,9 @@ Module.vfs = {
      * Shall abstract a stream entry
      */
     Entry: class {
+        EM_VFS_MEMORY_VERBATIM   = 0;
+        EM_VFS_MEMORY_COMPRESSED = 1;
+
         constructor(memory, index) {
             // memory: Module.vfs.Memory instance
             // index: entry index in header.offsets
@@ -1161,9 +1164,12 @@ Module.vfs = {
             this.size = {
                 entry:  this.memory.int32(parsing),
                 name:   this.memory.int32(parsing+4),
-                data:   this.memory.int32(parsing+8)
+                data:   {
+                    verbatim:   this.memory.int32(parsing+8),
+                    compressed: this.memory.int32(parsing+12)
+                }
             };
-            parsing += 12;
+            parsing += 16;
 
             this.stat = {
                 ctime:  this.memory.int64(parsing),
@@ -1179,7 +1185,10 @@ Module.vfs = {
             if (this.kind === Module.vfs.EM_VFS_FILE && this.size.data > 0) {
                 this.data = Module.HEAPU8.slice(
                     parsing + this.size.name,
-                    parsing + this.size.name + this.size.data
+                    parsing + this.size.name +
+                        (this.flags & this.EM_VFS_MEMORY_COMPRESSED) ?
+                            this.size.data.compressed :
+                            this.size.data.verbatim
                 );
             }
         }

@@ -1363,6 +1363,27 @@ async function initializeConfiguration() {
             "configuration-container"));
 }
 
+async function initializeParameters() {
+    let location = new URL(window.location.href);
+    let redirect = false;
+
+    if (location.searchParams.get("repo")) {
+        await loadGithubRepo(
+            location.searchParams.get("repo"));
+        location.searchParams.delete("repo");
+        redirect = true;
+    } else if (location.searchParams.get("gist")) {
+        await loadGithubGist(
+            location.searchParams.get("gist"));
+        location.searchParams.delete("gist");
+        redirect = true;
+    }
+
+    if (redirect) {
+        window.location = location;
+    }
+}
+
 function loadPHPRuntime() {
     updateStatus(`Loading PHP ${currentPHPVersion}...`, 'loading');
     if (typeof editorStatus !== 'undefined' && editorStatus)
@@ -1384,6 +1405,7 @@ function loadPHPRuntime() {
                 Module.addEventListener(
                     "vfs.modified", refreshFileTree);
                 refreshFileTree();
+                initializeParameters();
             } else {
                 setTimeout(checkReady, 100);
             }
@@ -1399,8 +1421,8 @@ function loadPHPRuntime() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Get PHP version from localStorage or default to 8.3
-    currentPHPVersion = localStorage.getItem('em-php-version') || '8.3';
+    currentPHPVersion =
+        localStorage.getItem('em-php-version') || '8.3';
     initializeEditor();
     await initializeBrowser();
     initializeConfiguration();

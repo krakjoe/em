@@ -21,11 +21,23 @@
 #define HAVE_EM_MEMORY
 
 #include <emscripten.h>
-
 #include <php.h>
 
+#define EM_VFS_MEMORY_MAGIC   "EMFS1\0"
+#define EM_VFS_MEMORY_VERSION "0.1.0\0"
+
+#ifdef HAVE_EM_ZLIB
+#include <zlib.h>
+#ifndef EM_VFS_MEMORY_ZLIB_MIN
+#   define EM_VFS_MEMORY_ZLIB_MIN   800
+#endif
+#ifndef EM_VFS_MEMORY_ZLIB_LEVEL
+#   define EM_VFS_MEMORY_ZLIB_LEVEL 6
+#endif
+#endif
+
 typedef struct _em_vfs_memory_header_t {
-    uint8_t  magic[6];      /* EMFS1\0 */
+    uint8_t  magic  [6];    /* EMFS1\0 */
     uint8_t  version[6];    /* Versioning Field */
     struct {
         uint32_t header;  /* Size of the header */
@@ -34,24 +46,34 @@ typedef struct _em_vfs_memory_header_t {
         uint32_t consumed;/* Total bytes consumed */
     } size;
     /* uint32_t* offsets; */
-} __attribute__((__packed__)) em_vfs_memory_header_t;
+} em_vfs_memory_header_t;
+
+typedef struct _em_vfs_memory_entry_size_t {
+    uint32_t verbatim;     /* The size of the file contents verbatim */
+    uint32_t compressed;   /* The size of the file contents when compress()'d */
+} em_vfs_memory_entry_size_t;
 
 typedef struct _em_vfs_memory_entry_t {
     uint8_t      kind;     /* The kind for this entry */
     uint8_t      flags;    /* Reserved */
     uint16_t     reserved; /* More reserved space */
     struct {
-        uint32_t entry; /* The size of this entry */
-        uint32_t name;  /* The size of the name of this entry */
-        uint32_t data;  /* The size of the data following this entry */
+        uint32_t entry;                  /* The size of this entry */
+        uint32_t name;                   /* The size of the name for this entry */
+        em_vfs_memory_entry_size_t data; /* The size of the data for this entry */
     } size;
     struct {
         uint64_t ctime; /* The time this entry was created */
         uint64_t mtime; /* The time this entry was last modified */
     } stat;
     /* char name[size.name]; */
-    /* char data[size.data]  */
-} __attribute__((__packed__)) em_vfs_memory_entry_t;
+    /* char data[size.data[.verbatim|.compressed]]  */
+} em_vfs_memory_entry_t;
+
+typedef enum _em_vfs_memory_entry_flags_t {
+    EM_VFS_MEMORY_VERBATIM   = 0,
+    EM_VFS_MEMORY_COMPRESSED = 1,
+} em_vfs_memory_entry_flags_t;
 
 /*
   Layout:
@@ -64,7 +86,7 @@ typedef struct _em_vfs_memory_entry_t {
 
     [entry]
     [name] entry.size.name bytes, null terminated
-    [data] file data entry.size.data bytes
+    [data] file data entry.size.data[.verbatim|.compressed] bytes
 */
 
 /**

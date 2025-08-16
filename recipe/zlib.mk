@@ -64,6 +64,8 @@ clean-zlib:
 $(eval $(call EM_RECIPE_ADD_CONFIGURE, $(EM_ZLIB_CONFIGURE)))
 $(eval $(call EM_RECIPE_ADD_TARGET,    $(EM_ZLIB_LIB)))
 $(eval $(call EM_RECIPE_ADD_LIB,       $(EM_ZLIB_LIB)))
+$(eval $(call EM_RECIPE_ADD_CFLAGS,    -DHAVE_EM_ZLIB))
+$(eval $(call EM_RECIPE_ADD_CFLAGS,    -I$(EM_ZLIB_SRC)/include))
 $(eval $(call EM_RECIPE_ADD_CLEANER,   clean-zlib))
 ########################################################################
 # Export for php
