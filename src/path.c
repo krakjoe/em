@@ -18,6 +18,54 @@
 
 #include "path.h"
 
+char* em_vfs_path_normalize(const char *path) {
+    // Strip vfs:// prefix if present
+    const char *input =
+        (strncmp(path, "vfs://", 6) == 0) ?
+            path + 6 : path;
+
+    // Duplicate input so we can tokenize safely
+    char *work = pestrdup(input, 1);
+    char *segments[256];
+    int count = 0;
+    bool has_trailing_slash =
+        (input[strlen(input) - 1] == '/');
+
+    // Tokenize and process segments
+    char *token = strtok(work, "/");
+    while (token) {
+        if (strcmp(token, ".") == 0) {
+            // skip
+        } else if (strcmp(token, "..") == 0) {
+            if (count > 0) count--; // pop last segment
+        } else {
+            segments[count++] = token;
+        }
+        token = strtok(NULL, "/");
+    }
+
+    // Allocate output buffer 
+    size_t length = strlen(input) + 2;
+    char *normalized = pecalloc(sizeof(char), length, 1);
+
+    // Rebuild normalized path
+    if (count == 0) {
+        strcpy(normalized, "/");
+    } else {
+        for (int i = 0; i < count; i++) {
+            strcat(normalized, "/");
+            strcat(normalized, segments[i]);
+        }
+        // Preserve trailing slash if original had one
+        if (has_trailing_slash) {
+            strcat(normalized, "/");
+        }
+    }
+
+    pefree(work, 1);
+    return normalized;
+}
+
 em_vfs_path_t* em_vfs_mkpath(const char* path) {
     if (!path) {
         return NULL;
@@ -25,41 +73,27 @@ em_vfs_path_t* em_vfs_mkpath(const char* path) {
 
     em_vfs_path_t* vpath = pecalloc(1, sizeof(em_vfs_path_t), 1);
 
-    // Store original path
-    vpath->original = pestrdup(path, 1);
-
-    // Skip vfs:// prefix if present
-    const char* clean_path = path;
-    if (strncmp(path, "vfs://", 6) == 0) {
-        clean_path = path + 6;
-    }
-
-    // Handle empty path (root directory)
-    if (!clean_path || *clean_path == '\0') {
-        vpath->directory = pestrdup("", 1);
-        vpath->filename = pestrdup("", 1);
-        vpath->is_root = true;
-        return vpath;
-    }
+    // Store normalized path
+    char* normalized =
+        vpath->original =
+            em_vfs_path_normalize(path);
 
     // Find last slash
-    char* temp_path = estrdup(clean_path);
-    char* last_slash = strrchr(temp_path, '/');
+    char* last_slash = strrchr(normalized, '/');
 
     if (last_slash) {
         // Path has directory: "dir/file.txt"
         *last_slash = '\0';
-        vpath->directory = pestrdup(temp_path, 1);
+        vpath->directory = pestrdup(normalized, 1);
         vpath->filename = pestrdup(last_slash + 1, 1);
         vpath->is_root = (strlen(vpath->directory) == 0);
     } else {
         // Path is just filename: "file.txt"
         vpath->directory = pestrdup("", 1);
-        vpath->filename = pestrdup(temp_path, 1);
+        vpath->filename = pestrdup(normalized, 1);
         vpath->is_root = true;
     }
 
-    efree(temp_path);
     return vpath;
 }
 

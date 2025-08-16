@@ -70,7 +70,7 @@ const ZipManager = {
     },
 
     // Export VFS to ZIP file
-    async exportZip(filename = 'vfs-export.zip') {
+    async exportZip(filename = 'vfs-export.zip', pathof='/') {
         if (!window.JSZip) {
             throw new Error('JSZip library not loaded');
         }
@@ -84,12 +84,12 @@ const ZipManager = {
             let exportedCount = 0;
 
             // Get all files from VFS
-            const iterator = Module.vfs.iterate('/');
+            const iterator = Module.vfs.iterate(pathof);
             const files = iterator.all(true);
             iterator.free();
 
             // Add files to ZIP recursively
-            const addFilesToZip = (fileList, basePath = '') => {
+            const addFilesToZip = (fileList, basePath) => {
                 fileList.forEach(file => {
                     const fullPath = basePath + file.name;
                     
@@ -109,7 +109,7 @@ const ZipManager = {
                 });
             };
 
-            addFilesToZip(files);
+            addFilesToZip(files, pathof);
 
             if (exportedCount === 0) {
                 return {
@@ -179,14 +179,14 @@ function handleImportZip() {
     input.click();
 }
 
-function handleExportZip() {
+function handleExportZip(path = '/') {
     if (!isReady || !Module || !Module.vfs) {
         updateStatus('PHP runtime not ready', 'error');
         return;
     }
 
     // Check if there are any files to export
-    let iterator = Module.vfs.iterate('vfs://');
+    let iterator = Module.vfs.iterate('/');
     const files = iterator.all(true);
     iterator.free();
 
@@ -197,10 +197,10 @@ function handleExportZip() {
 
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
     const filename = `vfs-export-${timestamp}.zip`;
-    
+
     updateStatus('Exporting to ZIP...', 'loading');
-    
-    ZipManager.exportZip(filename)
+
+    ZipManager.exportZip(filename, path)
         .then(result => {
             if (result.success) {
                 updateStatus(result.message, 'success');
@@ -212,7 +212,8 @@ function handleExportZip() {
             }
         })
         .catch(error => {
-            updateStatus(`Export failed: ${error.message}`, 'error');
+            updateStatus(
+                `Export failed: ${error.message}`, 'error');
             console.error('Export error:', error);
         });
 }
