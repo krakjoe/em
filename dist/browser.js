@@ -212,36 +212,6 @@ window.setUpBrowserContainer = async function(container) {
                     window.browserTab.history.length - 1;
                 window.updateBrowserButtons(container);
             }
-
-            const basePath = window.location.pathname.endsWith('/')
-                ? window.location.pathname
-                : window.location.pathname.substring(
-                    0, window.location.pathname.lastIndexOf('/') + 1);
-            if (iframe.contentWindow && iframe.contentDocument) {
-                const doc = iframe.contentDocument;
-                doc.addEventListener('click', function(e)
-                {
-                    let a = e.target;
-                    
-                    while (a && a.tagName !== 'A') {
-                        a = a.parentElement;
-                    }
-
-                    if (a && a.tagName === 'A' && a.hasAttribute('href')) {
-                        let href = a.getAttribute('href');
-                        // Only rewrite absolute paths not under basePath
-                        if (href &&
-                            href.startsWith('/') &&
-                            basePath !== '/' &&
-                            !href.startsWith(basePath)) {
-                            const newHref = basePath.replace(/\/$/, '') + href;
-                            a.setAttribute('href', newHref);
-                            e.preventDefault();
-                            window.navigateBrowser(container, newHref);
-                        }
-                    }
-                }, true);
-            }
         } catch (e) {} 
     });
 }

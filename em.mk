@@ -170,6 +170,7 @@ $(EM_PHP_DIR)/config.status: $(EM_PHP_DIR)/config.deps $(EM_RECIPE_TARGETS)
 	$(EM_PHP_DIR)/buildconf --force
 	@cd $(EM_PHP_DIR) && \
 		$(EMCONFIGURE) ./configure $(EM_PHP_CONFIGURE) \
+			--prefix=/tmp/em/$(EM_PHP_VERSION) \
 			--disable-all \
 			--disable-cgi \
 			--disable-cli \
@@ -302,6 +303,8 @@ strip: bin
 	$(STRIP) $(EM_ROOT_DIR)/php-em.wasm
 
 install: bin
+	@mkdir -p \
+		/tmp/em/$(EM_PHP_VERSION) 2>/dev/null
 	@$(EMMAKE) make -C $(EM_PHP_DIR) install
 
 clean-recipes: $(EM_RECIPE_CLEANERS)
