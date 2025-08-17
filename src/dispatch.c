@@ -76,6 +76,9 @@ static zend_always_inline const char* em_dispatch_mime(sapi_request_info* info, 
         return "application/javascript; charset=UTF-8";
     } else if (strcmp(extension, ".css") == SUCCESS) {
         return "text/css; charset=UTF-8";
+    } else if (strcmp(extension, ".yml") == SUCCESS ||
+               strcmp(extension, ".yaml") == SUCCESS) {
+        return "text/yaml; charset=UTF-8";
     }
 
     return fallback;

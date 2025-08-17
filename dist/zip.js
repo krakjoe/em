@@ -8,11 +8,17 @@ const ZipManager = {
     // Import ZIP file to VFS
     async importZip(file) {
         if (!window.JSZip) {
-            throw new Error('JSZip library not loaded');
+            return {
+                success: false,
+                message: `Failed to import ZIP archive, JSZip not loaded`
+            };
         }
 
         if (!isReady || !Module || !Module.vfs) {
-            throw new Error('PHP runtime not ready');
+            return {
+                success: false,
+                message: `Failed to import ZIP archive, Module not ready`
+            };
         }
 
         try {
@@ -70,13 +76,19 @@ const ZipManager = {
     },
 
     // Export VFS to ZIP file
-    async exportZip(filename = 'vfs-export.zip', pathof='/') {
+    async exportZip(path, filename) {
         if (!window.JSZip) {
-            throw new Error('JSZip library not loaded');
+            return {
+                success: false,
+                message: `Failed to import ZIP archive, JSZip not loaded`
+            };
         }
 
         if (!isReady || !Module || !Module.vfs) {
-            throw new Error('PHP runtime not ready');
+            return {
+                success: false,
+                message: `Failed to export ZIP archive, Module not ready`
+            };
         }
 
         try {
@@ -84,7 +96,7 @@ const ZipManager = {
             let exportedCount = 0;
 
             // Get all files from VFS
-            const iterator = Module.vfs.iterate(pathof);
+            const iterator = Module.vfs.iterate(path);
             const files = iterator.all(true);
             iterator.free();
 
@@ -98,18 +110,20 @@ const ZipManager = {
                         const content = Module.vfs.get(fullPath);
                         if (content !== false) {
                             // Add as Uint8Array for binary safety
-                            zip.file(fullPath, content);
+                            zip.file(
+                                fullPath, content);
                             exportedCount++;
                         }
-// NOTE: For GitHub import, ensure you fetch and pass Uint8Array/binary data to vfs.put, never JS strings.
-                    } else if (file.kind === Module.vfs.EM_VFS_DIR && file.children) {
+                    } else if (
+                        file.kind === Module.vfs.EM_VFS_DIR &&
+                        file.children) {
                         // It's a directory with children - recurse
                         addFilesToZip(file.children, fullPath + '/');
                     }
                 });
             };
 
-            addFilesToZip(files, pathof);
+            addFilesToZip(files, path);
 
             if (exportedCount === 0) {
                 return {
@@ -179,14 +193,14 @@ function handleImportZip() {
     input.click();
 }
 
-function handleExportZip(path = '/') {
+async function handleExportZip(path = '/') {
     if (!isReady || !Module || !Module.vfs) {
         updateStatus('PHP runtime not ready', 'error');
         return;
     }
 
     // Check if there are any files to export
-    let iterator = Module.vfs.iterate('/');
+    let iterator = Module.vfs.iterate(path);
     const files = iterator.all(true);
     iterator.free();
 
@@ -195,12 +209,30 @@ function handleExportZip(path = '/') {
         return;
     }
 
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    const filename = `vfs-export-${timestamp}.zip`;
+    let filename = window.createExportFilename(path, 'zip');
+    try {
+        filename = await modal.show(
+            'Export ZIP Archive',
+            'Enter a filename for the ZIP archive (.zip)',
+            filename,
+            { text: 'OK' },
+            { text: 'Cancel' }
+        );
+    } catch {
+        updateStatus('Export cancelled', 'error');
+        return;
+    }
+
+    filename = (filename || '').trim();
+    if (!filename || !filename.endsWith('.zip')) {
+        updateStatus(
+            'Export cancelled, invalid filename entered, must end in .zip', 'error');
+        return;
+    }
 
     updateStatus('Exporting to ZIP...', 'loading');
-
-    ZipManager.exportZip(filename, path)
+    
+    ZipManager.exportZip(path, filename)
         .then(result => {
             if (result.success) {
                 updateStatus(result.message, 'success');

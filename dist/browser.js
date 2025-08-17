@@ -132,12 +132,10 @@ function findContentType(headers, fallback) {
 }
 
 window.updateBrowserButtons = async function(container) {
-    const back =
-        container.querySelector("#browser-back");
+    const back = container.querySelector("#browser-back");
     back.disabled = window.browserTab.historyIndex <= 0;
 
-    const forward =
-        container.querySelector("#browser-back");
+    const forward = container.querySelector("#browser-forward");
     forward.disabled =
         window.browserTab.historyIndex >=
             window.browserTab.history.length - 1;
@@ -248,7 +246,7 @@ window.setUpBrowserContainer = async function(container) {
     });
 }
 
-window.navigateBrowser = async function(container, toUrl, addToHistory = true) {
+window.navigateBrowser = async function(container, toUrl) {
     const basePath = window.location.pathname.endsWith('/')
         ? window.location.pathname
         : window.location.pathname.substring(
@@ -260,25 +258,30 @@ window.navigateBrowser = async function(container, toUrl, addToHistory = true) {
         url = basePath.replace(/\/$/, '') + url;
     }
 
+    if (window.browserTab.history[
+            window.browserTab.historyIndex] !== url) {
+        window.browserTab.history = window.browserTab.history
+            .slice(0, window.browserTab.historyIndex + 1);
+        window.browserTab.history.push(url);
+        window.browserTab.historyIndex =
+            window.browserTab.history.length - 1;
+    }
+
+    if (!window.openTabs.find(
+            tab => tab.type === 'browser')) {
+        window.openTabs.push(window.browserTab);
+    }
+
     const input = container
         .querySelector("#browser-url");
     const frame = container
         .querySelector(
             "#browser-frame");
 
-    frame.contentWindow.fetch(url).then(async (response) => {
+    await frame.contentWindow.fetch(url).then(async (response) => {
         if (response.status == 200 || response.status == 500) {
             frame.src   = url;
             input.value = url;
-
-            if (addToHistory) {
-                window.browserTab.history =
-                    window.browserTab.history.slice(
-                        0, window.browserTab.historyIndex + 1);
-                window.browserTab.history.push(url);
-                window.browserTab.historyIndex =
-                    window.browserTab.history.length - 1;
-            }
         } else {
             /* 400, maybe the worker went away, reboot, retry */
             const location = frame.Browser.boot 

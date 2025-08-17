@@ -17,7 +17,6 @@ const modal = new Modal();
 
 // 2. Global state variables
 let currentOpenTab = null;
-let currentOpenFile = null;
 let openTabs = [];
 let editor = null;
 let currentContextPath = null;
@@ -46,8 +45,8 @@ const output = document.getElementById('output');
 const outputStatus = document.getElementById('outputStatus');
 const previewButton = document.getElementById('previewButton');
 const configurationButton = document.getElementById('configurationButton');
-
 const editorPanel = document.getElementById('editorPanel') || document.querySelector('.editor-panel') || document.getElementById('editor')?.parentElement;
+const browserContainer = document.getElementById('browser-container');
 
 function resetVFS() {
     if (!isReady || !Module || !Module.vfs) {
@@ -160,11 +159,7 @@ function switchTabView(tab) {
         }
     }
 
-    let browserContainer =
-        editorPanel
-            .querySelector('#browser-container');
-    window.updateBrowserContainer(
-        browserContainer, tab);
+    window.updateBrowserContainer(browserContainer, tab);
 
     let configurationContainer =
         editorPanel
@@ -548,16 +543,33 @@ function showContextMenu(e, path) {
             iter.free();
         } catch (err) {}
     }
-    const runMenuItem = contextMenu.querySelector('[data-action="run"]');
+
+    const openMenuItem     = contextMenu.querySelector('[data-action="open"]');
+    const runMenuItem      = contextMenu.querySelector('[data-action="run"]');
     const downloadMenuItem = contextMenu.querySelector('[data-action="download"]');
-    if (runMenuItem) {
-        runMenuItem.style.display =
-            isFile ? '' : 'none';
+    const browseMenuItem   = contextMenu.querySelector('[data-action="browse"]');
+
+    const exportZipItem    = contextMenu.querySelector('[data-action="export-zip"]');
+    const exportVfsItem    = contextMenu.querySelector('[data-action="export-vfs"]');
+
+    if (isFile) {
+        openMenuItem.style.display     = '';
+        runMenuItem.style.display      = '';
+        downloadMenuItem.style.display = '';
+        browseMenuItem.style.display   = '';
+
+        exportZipItem.style.display    = 'none';
+        exportVfsItem.style.display    = 'none';
+    } else {
+        exportZipItem.style.display    = '';
+        exportVfsItem.style.display    = '';
+
+        openMenuItem.style.display     = 'none';
+        runMenuItem.style.display      = 'none';
+        downloadMenuItem.style.display = 'none';
+        browseMenuItem.style.display   = 'none';
     }
-    if (downloadMenuItem) {
-        downloadMenuItem.style.display =
-            isFile ? '' : 'none';
-    }
+
     contextMenu.style.display = 'block';
     contextMenu.style.left = e.pageX + 'px';
     contextMenu.style.top = e.pageY + 'px';
@@ -854,7 +866,12 @@ function initializeEventHandlers() {
     });
     refreshFilesButton.addEventListener('click', refreshFileTree);
     // All modal OK/cancel logic is now handled by Modal class
-    document.addEventListener('click', hideContextMenu);
+    contextMenu.addEventListener('mouseout', function(e) {
+        // Only hide if mouse leaves the menu entirely
+        if (!contextMenu.contains(e.relatedTarget)) {
+            hideContextMenu();
+        }
+    });
     contextMenu.addEventListener('click', async (e) => {
         e.stopPropagation();
         const item = e.target.closest('.context-menu-item');
@@ -867,6 +884,25 @@ function initializeEventHandlers() {
             case 'open':
                 openFile(currentContextPath);
                 break;
+            case 'browse':
+                const browseUrl =
+                    window.configurationTab.configuration['vroot'] +
+                    (currentContextPath.startsWith("/") ?
+                        currentContextPath.substring(1) :
+                        currentContextPath);
+                window.navigateBrowser(
+                    browserContainer, browseUrl);
+                window.switchTabView(window.browserTab);
+                break;
+
+            case 'export-zip':
+                handleExportZip(currentContextPath + "/");
+                break;
+
+            case 'export-vfs':
+                handleExportVFS(currentContextPath + "/");
+                break;
+                
             case 'download':
                 downloadFile();
                 break;
@@ -1051,10 +1087,109 @@ function initializeEditor() {
     renderTabs();
 }
 
+function initializeImportExportButtons() {
+    const importBtn = document.getElementById('importBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const importContextMenu = document.getElementById('importContextMenu');
+    const exportContextMenu = document.getElementById('exportContextMenu');
+
+    let importMenuVisible = false;
+    let exportMenuVisible = false;
+
+    // Show Import Context Menu
+    importBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect =
+            importBtn.getBoundingClientRect();
+        importContextMenu.style.left =
+            rect.left + 'px';
+        importContextMenu.style.top =
+            (rect.bottom + window.scrollY) + 'px';
+        importContextMenu.style.display = 'block';
+        importMenuVisible = true;
+    });
+
+    // Show Export Context Menu
+    exportBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect =
+            exportBtn.getBoundingClientRect();
+        exportContextMenu.style.left =
+            rect.left + 'px';
+        exportContextMenu.style.top =
+            (rect.bottom + window.scrollY) + 'px';
+        exportContextMenu.style.display = 'block';
+        exportMenuVisible = true;
+    });
+
+    // Hide menus on click elsewhere
+    document.addEventListener('click', () => {
+        if (importMenuVisible) {
+            importContextMenu.style.display = 'none';
+            importMenuVisible = false;
+        }
+        if (exportMenuVisible) {
+            exportContextMenu.style.display = 'none';
+            exportMenuVisible = false;
+        }
+    });
+
+    // Handle Import Menu Actions
+    importContextMenu.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const item = e.target.closest('.context-menu-item');
+        if (!item) return;
+        importContextMenu.style.display = 'none';
+        importMenuVisible = false;
+        switch (item.dataset.action) {
+            case 'import-zip':
+                handleImportZip();
+                break;
+            case 'import-vfs':
+                handleImportVFS();
+                break;
+        }
+    });
+
+    // Handle Export Menu Actions
+    exportContextMenu.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const item = e.target.closest('.context-menu-item');
+        if (!item) return;
+        exportContextMenu.style.display = 'none';
+        exportMenuVisible = false;
+        switch (item.dataset.action) {
+            case 'export-zip':
+                handleExportZip('/');
+                break;
+            case 'export-vfs':
+                handleExportVFS('/');
+                break;
+        }
+    });
+
+    importContextMenu.addEventListener('mouseout', function(e) {
+        // Only hide if mouse leaves the menu entirely
+        if (!importContextMenu.contains(e.relatedTarget)) {
+            importContextMenu.style.display = 'none';
+            importMenuVisible = false;
+        }
+    });
+
+    exportContextMenu.addEventListener('mouseout', function(e) {
+        if (!exportContextMenu.contains(e.relatedTarget)) {
+            exportContextMenu.style.display = 'none';
+            exportMenuVisible = false;
+        }
+    });
+}
+
 function initializeGithubButton() {
     const githubBtn = document.getElementById('githubBtn');
     const githubContextMenu = document.getElementById('githubContextMenu');
-    let contextMenuVisible = false;
+    let githubMenuVisible = false;
 
     githubBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1064,14 +1199,14 @@ function initializeGithubButton() {
         githubContextMenu.style.left = rect.left + 'px';
         githubContextMenu.style.top = (rect.bottom + window.scrollY) + 'px';
         githubContextMenu.style.display = 'block';
-        contextMenuVisible = true;
+        githubMenuVisible = true;
     });
 
     // Hide menu on click elsewhere
     document.addEventListener('click', (e) => {
-        if (contextMenuVisible) {
+        if (githubMenuVisible) {
             githubContextMenu.style.display = 'none';
-            contextMenuVisible = false;
+            githubMenuVisible = false;
         }
     });
 
@@ -1080,7 +1215,7 @@ function initializeGithubButton() {
         const item = e.target.closest('.context-menu-item');
         if (!item) return;
         githubContextMenu.style.display = 'none';
-        contextMenuVisible = false;
+        githubMenuVisible = false;
         switch (item.dataset.action) {
             case 'set-token': {
                 let token = '';
@@ -1141,6 +1276,14 @@ function initializeGithubButton() {
                 }
                 break;
             }
+        }
+    });
+
+    githubContextMenu.addEventListener('mouseout', function(e) {
+        // Only hide if mouse leaves the menu entirely
+        if (!githubContextMenu.contains(e.relatedTarget)) {
+            githubContextMenu.style.display = 'none';
+            githubMenuVisible = false;
         }
     });
 }
@@ -1352,9 +1495,7 @@ async function runCode() {
 }
 
 async function initializeBrowser() {
-    await window.setUpBrowserContainer(
-        document.getElementById(
-            "browser-container"));
+    await window.setUpBrowserContainer(browserContainer);
 }
 
 async function initializeConfiguration() {
@@ -1420,6 +1561,32 @@ function loadPHPRuntime() {
     document.head.appendChild(script);
 }
 
+window.createExportFilename = function(path, ext) {
+    // Remove leading/trailing slashes
+    path = path.replace(/^\/+|\/+$/g, '');
+    // Split by slash,
+    //  filter empty,
+    //  remove non-alphanum/dash/underscore from each segment
+    let segments = path.split('/').filter(Boolean).map(seg =>
+        seg.replace(/[^0-9A-Za-z\-_]+/g, '')
+    );
+    // Remove empty segments
+    segments = segments.filter(Boolean);
+    // Join with dash
+    let name =
+        segments.join('-');
+
+    // Enter a timestamp
+    const timestamp = new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[T:]/g, '-');
+
+    if (!name)
+        return `em-${timestamp}.${ext}`;
+    return `${name}-${timestamp}.${ext}`;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     currentPHPVersion =
         localStorage.getItem('em-php-version') || '8.3';
@@ -1428,6 +1595,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeConfiguration();
     initializeEventHandlers();
     initializeGithubButton();
+    initializeImportExportButtons();
     loadPHPRuntime();
 });
 

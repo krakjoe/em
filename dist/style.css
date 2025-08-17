@@ -503,6 +503,13 @@ button:disabled {
     background: #404040;
 }
 
+.context-menu-separator {
+    height: 1px;
+    background: #404040;
+    margin: 4px 0;
+    border: none;
+}
+
 .file-name {
     flex: 1;
     overflow: hidden;
