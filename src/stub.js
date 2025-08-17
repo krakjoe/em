@@ -1069,7 +1069,7 @@ Module.vfs = {
                     header:  this.int32(this.address +  12),       /* uint32_t */
                     length:  this.int32(this.address +  16),       /* uint32_t */
                     records: this.int32(this.address +  20),       /* uint32_t */
-                    consumed: this.int64(this.address + 24)        /* uinr64_t */ 
+                    consumed: this.int32(this.address + 24)        /* uint32_t */ 
                 },
                 offsets: [],
             };
@@ -1130,8 +1130,8 @@ Module.vfs = {
      * Shall abstract a stream entry
      */
     Entry: class {
-        EM_VFS_MEMORY_VERBATIM   = 0;
-        EM_VFS_MEMORY_COMPRESSED = 1;
+        static EM_VFS_MEMORY_VERBATIM   = 0;
+        static EM_VFS_MEMORY_COMPRESSED = 1;
 
         constructor(memory, index) {
             // memory: Module.vfs.Memory instance
@@ -1175,20 +1175,25 @@ Module.vfs = {
                 ctime:  this.memory.int64(parsing),
                 mtime:  this.memory.int64(parsing+8)
             };
-            parsing += 16;
+            parsing += 20; // 16 + 4 byte padding
 
             // Name (null-terminated, size.name bytes)
             this.name = Module.encoding.latin1.out(
-                new Uint8Array(Module.HEAPU8.buffer, parsing, this.size.name)
+                new Uint8Array(
+                    Module.HEAPU8.buffer, parsing, this.size.name-1)
             );
+
+            parsing += this.size.name;
+
+            // Data, may be compressed
             this.data = null;
-            if (this.kind === Module.vfs.EM_VFS_FILE && this.size.data > 0) {
+            if (this.kind === Module.vfs.EM_VFS_FILE && this.size.data.verbatim > 0) {
                 this.data = Module.HEAPU8.slice(
-                    parsing + this.size.name,
-                    parsing + this.size.name +
-                        (this.flags & this.EM_VFS_MEMORY_COMPRESSED) ?
+                    parsing,
+                    parsing +
+                        ((this.flags & Module.vfs.Entry.EM_VFS_MEMORY_COMPRESSED) ?
                             this.size.data.compressed :
-                            this.size.data.verbatim
+                            this.size.data.verbatim)
                 );
             }
         }

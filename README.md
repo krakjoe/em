@@ -102,9 +102,31 @@ const content = Module.vfs.get('/data.txt');
 
 ### Project Management
 - **New File/Folder**: Create and organize your project structure
-- **Import ZIP**: Upload existing projects
-- **Export ZIP**: Download your work
+- **Import/Export VFS**: Upload/Download and persist with native, optionally compressed, and random access memory streams.
+- **Import/Export ZIP**: Upload/Download from external sources
 - **GitHub Import**: Load repositories and gists directly
+
+### VFS Images
+
+While ZIP is a perfectly cromulent and portable format, it's rather wasteful, and does not lend itself to very fast reading or writing, so we could not base persistence on Zip.
+
+Instead `em` implements streaming the vfs as a contiguous buffer, the buffer will use compression where `zlib` is available, is randomly accessible, produces smaller outputs than `zip` and is much more suitable for persistence.
+
+So that you may create images outside of the ide, we provide `php-em-vfs.js`, this may be used to create and extract images from and into local directories.
+
+#### Examples
+
+To create `/tmp/my.vfsi` with the content of `/path/to/my/files`:
+
+`php-em-vfs.js --mode create --in /path/to/my/files --out /tmp/my.vfsi`
+
+To create `/tmp/my.vfsi` with the contents of `/path/to/my/files` where the root directory in the image is desired to be `files`:
+
+`php-em-vfs.js --mode create --in /path/to/my/files --out /tmp/my.vfsi --strip 2`
+
+To extra `/tmp/my.vfsi` into `/tmp/vfsi.my` (output directory must exist):
+
+`php-em-vfs.js --mode extract --in /tmp/my.vfsi --out /tmp/vfsi.my`
 
 ### Multiple PHP Versions
 Test your code across different PHP versions to ensure compatibility:
