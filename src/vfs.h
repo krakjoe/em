@@ -25,6 +25,8 @@
 #include "node.h"
 #include "path.h"
 
+extern php_stream_wrapper em_vfs_wrapper;
+
 typedef struct _em_vfs_abstract_t {
     char*               data;
     ssize_t             length;

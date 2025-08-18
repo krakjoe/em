@@ -50,6 +50,7 @@ dist/php-em.wasm
 # Ignore libtool object files and dependency files everywhere
 **/*.lo
 **/*.o
+**/*.a
 **/*.dep
 
 # VS Code settings (optional)

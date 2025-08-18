@@ -41,7 +41,7 @@ extern void em_sqlite_vfs_register(void);
 extern void em_sqlite_vfs_unregister(void);
 #endif
 
-static php_stream_wrapper em_vfs_wrapper;
+php_stream_wrapper em_vfs_wrapper;
 static php_stream_ops     em_vfs_ops;
 
 static em_vfs_node_t* em_vfs = NULL;
@@ -493,6 +493,16 @@ static int em_vfs_wrapper_rmdir(
     return em_vfs_unlink(url, true);
 }
 
+int em_vfs_wrapper_meta(php_stream_wrapper *wrapper, const char *url, int options, void *value, php_stream_context *context) {
+    switch (options) {
+        case PHP_STREAM_META_TOUCH:
+        case PHP_STREAM_META_ACCESS:
+            return 1;
+    }
+
+    return FAILURE;
+}
+
 static php_stream_wrapper_ops em_vfs_wrapper_ops = {
     em_vfs_wrapper_open,
     NULL,
@@ -504,10 +514,10 @@ static php_stream_wrapper_ops em_vfs_wrapper_ops = {
     em_vfs_wrapper_rename,
     em_vfs_wrapper_mkdir,
     em_vfs_wrapper_rmdir,
-    NULL,
+    em_vfs_wrapper_meta,
 };
 
-static php_stream_wrapper em_vfs_wrapper = {
+php_stream_wrapper em_vfs_wrapper = {
     &em_vfs_wrapper_ops,
     NULL,
     0

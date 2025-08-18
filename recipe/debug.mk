@@ -13,8 +13,6 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
-$(eval $(call EM_RECIPE_ADD_CONFIGURE,  --enable-debug))
-
 $(eval $(call EM_RECIPE_ADD_CFLAGS,  -g))
 $(eval $(call EM_RECIPE_ADD_LDFLAGS, -g))
 

@@ -35,6 +35,7 @@
 #include "dispatch.h"
 #include "buffer.h"
 #include "mutators.h"
+#include "stdio.h"
 
 extern sapi_module_struct em_sapi_module;
 
@@ -46,7 +47,7 @@ static const char EM_INI[] =
     "html_errors=0\n"
     "error_reporting=22527\n"
     "display_errors=1\n"
-    "register_argc_argv=1\n"
+    "register_argc_argv=0\n"
     "implicit_flush=1\n"
     "output_buffering=0\n"
     "max_execution_time=0\n"
@@ -294,6 +295,7 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     sapi_module.ub_write    = em_dispatch_writer;
     sapi_module.log_message = em_buffer_log;
 
+    em_stdio_startup();
     em_dispatch_startup();
     em_http_startup();
     em_vfs_startup();
@@ -390,6 +392,7 @@ void EMSCRIPTEN_KEEPALIVE em_run_free(uintptr_t address) {
 }
 
 void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
+    em_stdio_shutdown();
     em_dispatch_shutdown();
     em_http_shutdown();
     em_vfs_shutdown();
