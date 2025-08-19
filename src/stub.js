@@ -352,13 +352,12 @@ Module.include = async function(script, output) {
         [  script  ], { async: true });
 
     // check for errors
-    if (context < 0) {
+    if (!context) {
         // Fire error event
         Module.dispatchEvent(new CustomEvent('include.error', { 
             detail: { 
                 "script": script,
-                "output": output,
-                "result": result }
+                "output": output }
         }));
 
         // we don't need to care about freeing, nothing was allocated
@@ -525,6 +524,8 @@ Module.invoke = async function(input, output = undefined) {
         // we don't need to care about freeing, nothing was allocated
         throw new Error("Unexpected result, execution failed");
     }
+
+    console.log(context);
 
     // the code ran, find the address and length of the result
     let result = {

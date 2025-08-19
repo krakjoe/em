@@ -16,12 +16,23 @@
   +----------------------------------------------------------------------+
  */
 
-#ifndef HAVE_EM_STDIO
-#define HAVE_EM_STDIO
-#include <emscripten.h>
+#ifndef HAVE_EM_BUFFER
+#define HAVE_EM_BUFFER
 
-#include <php.h>
+#include <stdbool.h>
+#include <sys/types.h>
 
-void em_stdio_startup(void);
-void em_stdio_shutdown(void);
+typedef struct _em_buffer_t {
+    char* value;
+    size_t length;
+    size_t max;
+    size_t position;
+    char*  token;
+} em_buffer_t;
+
+#define EM_BUFFER_EMPTY (em_buffer_t) {NULL, 0, 0, 0}
+
+size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len);
+void em_buffer_clear(em_buffer_t* buffer, bool _free);
+size_t em_buffer_join(em_buffer_t* buffer, em_buffer_t* head, em_buffer_t* body);
 #endif

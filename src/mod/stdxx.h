@@ -15,26 +15,13 @@
   | Author: krakjoe                                                      |
   +----------------------------------------------------------------------+
  */
-#include "vfs.h"
 
-/**
- * Many calls within zend up in lstat, so we take over here ...
- */
-int lstat(const char *restrict path, struct stat *restrict buf) {
-    em_vfs_path_t* vpath =
-        em_vfs_mkpath(path);
-    
-    php_stream_statbuf ssb;
-    if (em_vfs_stat_path(
-            vpath, &ssb, true) != SUCCESS) {
-        em_vfs_path_release(vpath);
-        return FAILURE;
-    }
+#ifndef HAVE_EM_STDIO
+#define HAVE_EM_STDIO
+#include <emscripten.h>
 
-    memcpy(
-        buf,
-        &ssb.sb,
-        sizeof(struct stat));
-    em_vfs_path_release(vpath);
-    return SUCCESS;
-}
+#include <php.h>
+
+void em_stdxx_startup(void);
+void em_stdxx_shutdown(void);
+#endif

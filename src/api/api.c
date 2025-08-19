@@ -29,13 +29,14 @@
 #include <zend_exceptions.h>
 #include <ext/json/php_json.h>
 
+#include "buffer.h"
 #include "vfs.h"
 #include "http.h"
 #include "api.h"
 #include "dispatch.h"
-#include "buffer.h"
 #include "mutators.h"
-#include "stdio.h"
+#include "stdxx.h"
+#include "proc.h"
 
 extern sapi_module_struct em_sapi_module;
 
@@ -295,7 +296,8 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     sapi_module.ub_write    = em_dispatch_writer;
     sapi_module.log_message = em_buffer_log;
 
-    em_stdio_startup();
+    em_proc_startup();
+    em_stdxx_startup();
     em_dispatch_startup();
     em_http_startup();
     em_vfs_startup();
@@ -373,26 +375,33 @@ uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
 char* EMSCRIPTEN_KEEPALIVE em_run_result(uintptr_t address) {
     em_dispatch_context_t* context =
         (em_dispatch_context_t*) address;
+    if (!context) {
+        return NULL;
+    }
     return context->buffers.response.join.value;
 }
 
 size_t EMSCRIPTEN_KEEPALIVE em_run_length(uintptr_t address) {
     em_dispatch_context_t* context =
         (em_dispatch_context_t*) address;
+    if (!context) {
+        return 0;
+    }
     return context->buffers.response.join.length;
 }
 
 void EMSCRIPTEN_KEEPALIVE em_run_free(uintptr_t address) {
-    if (!address) {
+    em_dispatch_context_t* context =
+        (em_dispatch_context_t*) address;
+    if (!context) {
         return;
     }
 
-    em_dispatch_free(
-        (em_dispatch_context_t*) address);
+    em_dispatch_free(context);
 }
 
 void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
-    em_stdio_shutdown();
+    em_stdxx_shutdown();
     em_dispatch_shutdown();
     em_http_shutdown();
     em_vfs_shutdown();

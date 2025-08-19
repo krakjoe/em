@@ -32,7 +32,7 @@ typedef struct _php_stdio_stream_abstract_t {
     int   fd;
 } php_stdio_stream_abstract_t;
 
-ssize_t em_stdio_write(php_stream* stream, const char* buffer, size_t length) {
+ssize_t em_stdxx_write(php_stream* stream, const char* buffer, size_t length) {
     php_stdio_stream_abstract_t* abstract =
         (php_stdio_stream_abstract_t*)
             stream->abstract;
@@ -45,53 +45,53 @@ ssize_t em_stdio_write(php_stream* stream, const char* buffer, size_t length) {
         em_dispatch_context_t* context = SG(server_context);
 
         if (!context) {
-            goto __em_stdio_write_fallback;
+            goto __em_stdxx_write_fallback;
         }
 
         return (ssize_t) em_dispatch_response(
             context, EM_DISPATCH_BODY, buffer, length);
     }
 
-__em_stdio_write_fallback:
+__em_stdxx_write_fallback:
     return __php_stdio_ops__.write(stream, buffer, length);
 }
 
-ssize_t em_stdio_read(php_stream* stream, char* buffer, size_t count) {
+ssize_t em_stdxx_read(php_stream* stream, char* buffer, size_t count) {
     return __php_stdio_ops__.read(stream, buffer, count);
 }
 
-int em_stdio_close(php_stream* stream, int closefd) {
+int em_stdxx_close(php_stream* stream, int closefd) {
     return __php_stdio_ops__.close(stream, closefd);
 }
 
-int em_stdio_flush(php_stream* stream) {
+int em_stdxx_flush(php_stream* stream) {
     return __php_stdio_ops__.flush(stream);
 }
 
-int em_stdio_seek(php_stream *stream, zend_off_t offset, int whence, zend_off_t *newoffset) {
+int em_stdxx_seek(php_stream *stream, zend_off_t offset, int whence, zend_off_t *newoffset) {
     return __php_stdio_ops__.seek(stream, offset, whence, newoffset);
 }
 
-int em_stdio_cast(php_stream *stream, int castas, void **ret) {
+int em_stdxx_cast(php_stream *stream, int castas, void **ret) {
     return __php_stdio_ops__.cast(stream, castas, ret);
 }
 
-int em_stdio_option(php_stream *stream, int option, int value, void *ptrparam) {
+int em_stdxx_option(php_stream *stream, int option, int value, void *ptrparam) {
     return __php_stdio_ops__.set_option(stream, option, value, ptrparam);
 }
 
-static php_stream_ops em_stdio_ops = (php_stream_ops) {
-    .write      = em_stdio_write,
-    .read       = em_stdio_read,
-    .close      = em_stdio_close,
-    .flush      = em_stdio_flush,
+static php_stream_ops em_stdxx_ops = (php_stream_ops) {
+    .write      = em_stdxx_write,
+    .read       = em_stdxx_read,
+    .close      = em_stdxx_close,
+    .flush      = em_stdxx_flush,
     .label      = "em-stdio",
-    .seek       = em_stdio_seek,
-    .cast       = em_stdio_cast,
-    .set_option = em_stdio_option
+    .seek       = em_stdxx_seek,
+    .cast       = em_stdxx_cast,
+    .set_option = em_stdxx_option
 };
 
-void em_stdio_startup(void) {
+void em_stdxx_startup(void) {
     memcpy(
         &__php_stdio_ops__,
         &php_stream_stdio_ops, 
@@ -105,7 +105,7 @@ void em_stdio_startup(void) {
      */
     memcpy(
         &php_stream_stdio_ops,
-        &em_stdio_ops,
+        &em_stdxx_ops,
         sizeof(php_stream_ops));
     /**
      * Use the vfs for plain files
@@ -116,7 +116,7 @@ void em_stdio_startup(void) {
         sizeof(php_stream_wrapper));
 }
 
-void em_stdio_shutdown(void) {
+void em_stdxx_shutdown(void) {
     /**
      * Put it all back the way it was ...
      */
