@@ -142,7 +142,7 @@ jobs:
               command: "npx electron-builder --linux --arm64 --config.linux.target=AppIzipmage --publish=never"
             }
           
-          # Windows builds  
+          # Windows builds
           - { 
               os: windows-latest, 
               name: "em-windows-x64-nsis",
@@ -155,7 +155,7 @@ jobs:
             }
           - { 
               os: windows-latest, 
-              name: "em-windows-x64-portable",
+              name: "em-windows-x64-zip",
               command: "npx electron-builder --win --x64 --config.win.target=zip --publish=never"
             }
           
