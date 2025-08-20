@@ -14,8 +14,18 @@
     "directories": {
       "output": "/tmp/em"
     },
+    "artifactName": "../electron/${productName}-${version}-${os}-${arch}.${ext}",
     "linux": {
-      "target": "AppImage",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
       "category": "Development"
     },
     "win": {

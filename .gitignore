@@ -43,9 +43,9 @@ html/
 *.gcno
 *.gcov
 dist/node_modules
-dist/package-lock.json
-dist/php-em.js
-dist/php-em.wasm
+dist/latest
+dist/*.bin
+dist/composer*
 
 # Ignore libtool object files and dependency files everywhere
 **/*.lo

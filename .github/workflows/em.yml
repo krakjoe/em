@@ -102,12 +102,6 @@ jobs:
           echo "Final directory structure:"
           find dist -type f
       
-      - name: Setup demo page
-        run: |
-          # The dist/index.html is already in the repo, no need to copy
-          echo "Using existing dist/index.html from repo"
-          ls -la dist/
-      
       - name: Setup Pages
         uses: actions/configure-pages@v4
       
@@ -122,10 +116,60 @@ jobs:
 
   electron-build:
     needs: build
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.config.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        config:
+          # Linux builds
+          - { 
+              os: ubuntu-latest, 
+              name: "electron-linux-appimage-x64",
+              command: "npx electron-builder --linux --x64 --config.linux.target=AppImage --publish=never"
+            }
+          - { 
+              os: ubuntu-latest, 
+              name: "electron-linux-appimagex-64",
+              command: "npx electron-builder --linux --arm64 --config.linux.target=AppImage --publish=never"
+            }
+          
+          # Windows builds  
+          - { 
+              os: windows-latest, 
+              name: "electron-windows-nsis",
+              command: "npx electron-builder --win  --x64 --config.win.target=nsis --publish=never"
+            }
+          - { 
+              os: windows-latest, 
+              name: "electron-windows-exe",
+              command: "npx electron-builder --win --x64 --config.win.target=portable --publish=never"
+            }
+          - { 
+              os: windows-latest, 
+              name: "electron-windows-portable",
+              command: "npx electron-builder --win --x64 --config.win.target=zip --publish=never"
+            }
+          
+          # macOS builds
+          - { 
+              os: macos-latest, 
+              name: "electron-macos-dmg-x64",
+              command: "npx electron-builder --mac --x64 --config.mac.target=dmg --publish=never"
+            }
+          - { 
+              os: macos-latest, 
+              name: "electron-macos-dmg-arm64",
+              command: "npx electron-builder --mac --arm64 --config.mac.target=dmg --publish=never"
+            }
+          - { 
+              os: macos-latest, 
+              name: "electron-macos-zip-x64",
+              command: "npx electron-builder --mac --x64 --config.mac.target=zip --publish=never"
+            }
+          - { 
+              os: macos-latest, 
+              name: "electron-macos-zip-arm64",
+              command: "npx electron-builder --mac --arm64 --config.mac.target=zip --publish=never"
+            }
     
     steps:
       - name: Checkout
@@ -166,22 +210,11 @@ jobs:
           done
         shell: bash
 
-      - name: Build Electron Application
-        run: cd dist && npm run dist
+      - name: Build Electron Application for Target
+        run: cd dist && mkdir /tmp/electron && ${{ matrix.config.command }}
 
-      - name: Cleanup Electron Artifacts
-        run: |
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-              rm -rf /tmp/em/mac /tmp/em/mac-arm64
-            elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-              rm -rf /tmp/em/win-unpacked
-            elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-              rm -rf /tmp/em/linux-unpacked
-            fi
-        shell: bash
-
-      - name: Upload Electron Application
+      - name: Upload Target Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: electron-${{ matrix.os }}
-          path: /tmp/em/
+          name: ${{ matrix.config.name }}
+          path: /tmp/electron/
