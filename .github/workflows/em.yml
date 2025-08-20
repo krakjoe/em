@@ -121,53 +121,63 @@ jobs:
       matrix:
         config:
           # Linux builds
-          - { 
+          - {
               os: ubuntu-latest, 
-              name: "electron-linux-appimage-x64",
+              name: "em-linux-x64-AppImage",
               command: "npx electron-builder --linux --x64 --config.linux.target=AppImage --publish=never"
             }
           - { 
               os: ubuntu-latest, 
-              name: "electron-linux-appimagex-64",
+              name: "em-linux-arm64-AppImage",
               command: "npx electron-builder --linux --arm64 --config.linux.target=AppImage --publish=never"
+            }
+          - {
+              os: ubuntu-latest, 
+              name: "em-linux-x64-zip",
+              command: "npx electron-builder --linux --x64 --config.linux.target=zip --publish=never"
+            }
+          - { 
+              os: ubuntu-latest, 
+              name: "em-linux-arm64-zip",
+              command: "npx electron-builder --linux --arm64 --config.linux.target=AppIzipmage --publish=never"
             }
           
           # Windows builds  
           - { 
               os: windows-latest, 
-              name: "electron-windows-nsis",
+              name: "em-windows-x64-nsis",
               command: "npx electron-builder --win  --x64 --config.win.target=nsis --publish=never"
             }
           - { 
               os: windows-latest, 
-              name: "electron-windows-exe",
+              name: "em-windows-x64-exe",
               command: "npx electron-builder --win --x64 --config.win.target=portable --publish=never"
             }
           - { 
               os: windows-latest, 
-              name: "electron-windows-portable",
+              name: "em-windows-x64-portable",
               command: "npx electron-builder --win --x64 --config.win.target=zip --publish=never"
             }
           
           # macOS builds
           - { 
               os: macos-latest, 
-              name: "electron-macos-dmg-x64",
+              name: "em-macos-x64-dmg",
               command: "npx electron-builder --mac --x64 --config.mac.target=dmg --publish=never"
             }
           - { 
               os: macos-latest, 
-              name: "electron-macos-dmg-arm64",
+              name: "em-macos-arm64-dmg",
               command: "npx electron-builder --mac --arm64 --config.mac.target=dmg --publish=never"
             }
           - { 
               os: macos-latest, 
-              name: "electron-macos-zip-x64",
+              name: "em-macos-x64-zip",
               command: "npx electron-builder --mac --x64 --config.mac.target=zip --publish=never"
             }
           - { 
               os: macos-latest, 
-              name: "electron-macos-zip-arm64",
+              name: "em-macos-arm64-zip",
               command: "npx electron-builder --mac --arm64 --config.mac.target=zip --publish=never"
             }
     
