@@ -139,7 +139,7 @@ jobs:
           - { 
               os: ubuntu-latest, 
               name: "em-linux-arm64-zip",
-              command: "npx electron-builder --linux --arm64 --config.linux.target=AppIzipmage --publish=never"
+              command: "npx electron-builder --linux --arm64 --config.linux.target=zip --publish=never"
             }
           
           # Windows builds
