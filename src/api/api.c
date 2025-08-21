@@ -38,15 +38,28 @@
 #include "stdxx.h"
 #include "proc.h"
 
+#ifdef HAVE_EM_SHM
+extern void em_shm_startup(void);
+extern void em_shm_shutdown(void);
+#endif
+
 extern sapi_module_struct em_sapi_module;
+
+#if PHP_VERSION_ID >= 80500
+#define EM_INI_OPCACHE \
+    "opcache.enable=1\n"
+#else
+#define EM_INI_OPCACHE \
+    "opcache.enable=0\n"
+#endif
 
 static const char EM_INI[] =
     "variables_order=EGPCS\n"
-    "opcache.enable=0\n"
+    EM_INI_OPCACHE
     "allow_url_fopen=1\n"
     "allow_url_include=1\n"
     "html_errors=0\n"
-    "error_reporting=22527\n"
+    "error_reporting=E_ALL &~ E_DEPRECATED\n"
     "display_errors=1\n"
     "register_argc_argv=0\n"
     "implicit_flush=1\n"
@@ -258,6 +271,9 @@ static zend_always_inline void em_deactivate(void) {
 
 /* {{{ exports */
 int EMSCRIPTEN_KEEPALIVE em_startup(void) {
+#ifdef HAVE_EM_SHM
+    em_shm_startup();
+#endif
     /**
      * We don't expect to leak, this is not leak suppression
      * We are stopping uaf at leak checker
@@ -417,6 +433,10 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
 
 #ifdef ZTS
     tsrm_shutdown();
+#endif
+
+#ifdef HAVE_EM_SHM
+    em_shm_shutdown();
 #endif
 } /* }}} */
 

@@ -13,12 +13,9 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
-# Note: opcache will compile and build and link, however,
-#	**it won't actually function as a cache**.
-# There are hard coded limitations in opcache that prevent it from
-# working on virtual file systems and streams.
-# The philosophy of em prohibits us from patching this source code,
-# so there is nothing we are able to do about this ... for now ...
+# Opcache supports being used in 8.5+, otherwise if php-src forces
+# us to link it is non-functional, if php-src doesn't force us to link
+# it is disabled (there is no point in enabling it, it will be ignored)
 ########################################################################
 # Version guard:
 #  Pre 8.4, opcache would run AC_IF_ELSE during configure, we can't stop
@@ -26,13 +23,7 @@
 #  as a result it would break the build if enabled ...
 #
 #  Post 8.5 opcache is a static requirement of the build, we cannot
-#  disable or remove it.
-#
-#  It's probably possible to provide a shim for mmap/munmap/mprotect
-#  so that opcache will function, however, it's not so simple to
-#  implement the behavior of munmap, and does not really look worth it.
-#
-#  Opcache is accomodated at build time and disabled at runtime for now
+#  disable or remove it, nor do we need to because opcache will function
 ########################################################################
 ifeq ($(call EM_PHP_VERSION_GE,80400),true)
 ########################################################################
@@ -41,6 +32,8 @@ ifeq ($(call EM_PHP_VERSION_GE,80400),true)
 $(eval $(call \
 	EM_RECIPE_ADD_LINK,\
 		$(EM_RECIPE_STUBS)/shm.c))
+$(eval $(call \
+	EM_RECIPE_ADD_CFLAGS, -DHAVE_EM_SHM))
 $(eval $(call \
 	EM_RECIPE_ADD_LINK,\
 		$(EM_RECIPE_STUBS)/initgroups.c))
