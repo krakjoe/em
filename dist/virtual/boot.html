@@ -311,6 +311,12 @@
         if (window.parent && window.parent.updateStatus) {
             window.parent.updateStatus(message, type);
         }
+
+        if (type == 'error') {
+            console.error(message);
+        } else {
+            console.log(message);
+        }
     }
     </script>
 </head>

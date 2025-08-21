@@ -41,7 +41,8 @@ self.addEventListener('fetch', event => {
 
     if (url.pathname.endsWith(boot)) {
         console.warn(
-            `[worker:${uuid}] Boot Pass`);
+            `[worker:${uuid}] Boot ` +
+                `${url.searchParams.has('ping') ? 'Ping' : 'Pass'}`);
         return;
     }
 
@@ -78,7 +79,7 @@ self.addEventListener('fetch', event => {
     })());
 });
 
-self.addEventListener('message', event => {    
+self.addEventListener('message', async (event) => {    
     switch (event.data.type) {
         case 'SKIP_WAITING':
             self.skipWaiting();
@@ -101,21 +102,21 @@ self.addEventListener('message', event => {
                 `[worker:${uuid}] Initializing`);
             channel = new BroadcastChannel(
                 `em-browser:${uuid}`);
-            channel.addEventListener('message', (event) => {
+            channel.addEventListener('message', async (event) => {
                 if (event.data.type === 'CLIENT_RESPONSE') {
-                    console.log(
-                        `[worker:${uuid}] Responding ${event.data.url}`,
-                        event.data);
                     const resolve = pending.get(event.data.id);
                     if (resolve) {
-                        pending.delete(event.data.id);
+                        console.log(
+                            `[worker:${uuid}] Responding ${event.data.url}`,
+                        event.data);
+                        pending.delete(
+                            event.data.id);
                         resolve(event.data);
                     } else {
                         console.warn(
-                            `[worker:${uuid}] Nothing Pending`);
+                            `[worker:${uuid}] Nothing Pending for ${event.data.id}`);
                     }
                 } else if (event.data.type === 'CLIENT_PING') {
-                    console.log(`[worker:${uuid}] Pinged`);
                     channel.postMessage({
                         type: 'CLIENT_PONG',
                         uuid: uuid

@@ -22,30 +22,39 @@ class Browser {
             `em-browser:${this.uuid}`);
         this.setupChannelListener();
 
-        this.frame.addEventListener("load", function(){
-            this.frame.contentWindow.postMessage({
-                type: 'CLIENT_INIT',
-                vroot:  this.vroot,
-                boot:   this.boot,
-                worker: this.worker,
-                uuid:   this.uuid,
-            }, '*');
-        }.bind(this), { once: true });
+        this.frame.addEventListener(
+            "load", async () => {
+            this.doInit();
+        }, { once: true });
 
         this.frame.src = this.boot;
 
         window.Browser = this;
     }
 
+    doInit() {
+        this.frame.contentWindow.postMessage({
+            type: 'CLIENT_INIT',
+            vroot:  this.vroot,
+            boot:   this.boot,
+            worker: this.worker,
+            uuid:   this.uuid,
+        }, '*');
+    }
+    
     doPingPong() {
         if (this.pingPongTimeout) {
             window.clearTimeout(
                 this.pingPongTimeout);
         }
-
-        this.channel.postMessage({
-            type: 'CLIENT_PING',
-            uuid: this.uuid
+        this.frame.contentWindow.fetch(
+            this.boot + '?ping=true'
+        ).then(() => {
+            this.channel.postMessage({
+                type: 'CLIENT_PING',
+                uuid: this.uuid,
+                hash: crypto.randomUUID()
+            });
         });
     }
 
@@ -56,9 +65,8 @@ class Browser {
                     `[browser:${this.uuid}] Ackowledged`);
                 this.doPingPong();
             } else if (event.data.type == 'CLIENT_PONG') {
-                console.log(`[browser:${this.uuid}] Ponged`);
                 this.pingPongTimeout = window.setTimeout(
-                    this.doPingPong.bind(this), 1000 * 20);
+                    this.doPingPong.bind(this), 1000 * 5);
             } else if (event.data.type === 'CLIENT_REQUEST') {                
                 if (typeof Module == 'undefined' || !Module.ready) {
                     console.error(
