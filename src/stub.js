@@ -1442,19 +1442,17 @@ Module.vfs = {
         }
 
         onEnable = async () => {
-            let memory = null;
             try {
                 const data  = await this.fs.readFile(this.path);
-                memory =
+                const memory =
                     new Module.vfs.Memory(data);
-            } catch (error) {
-                console.warn(
-                    'persistence cant find disk', error);
-            } finally {
                 await memory.load();
                 const writer = 
                         new Module.vfs.Writer(memory);
                 await writer.write();
+            } catch (error) {
+                console.warn(
+                    'persistence cant read disk', error);
             }
 
             Module.addEventListener(

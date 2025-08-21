@@ -20,6 +20,9 @@ const VFSManager = {
         try {
             // Get VFS image as Uint8Array
             const memory = new Module.vfs.Memory(path);
+
+            await memory.load();
+
             const image = Module.HEAPU8.slice(
                 memory.address,
                 memory.address + memory.header.size.consumed
