@@ -57,13 +57,19 @@ const VFSManager = {
         }
 
         try {
+            Module.persistence.disable();
+
             const arrayBuffer = await file.arrayBuffer();
             const image = new Uint8Array(arrayBuffer);
-            const memory = new Module.vfs.Memory(image);
+            const memory =
+                new Module.vfs.Memory(image);
+
+            await memory.load();
+
             const writer = new Module.vfs.Writer(memory);
 
             try {
-                writer.write();
+                await writer.write();
             } catch (error) {
                 return {
                     success: false,
@@ -82,6 +88,9 @@ const VFSManager = {
                 error: error.message,
                 message: `Failed to import VFS image: ${error.message}`
             };
+        } finally {
+            Module.persistence.enable();
+            Module.persistence.onDirty();
         }
     }
 };

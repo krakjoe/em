@@ -98,7 +98,9 @@ endef
 EM_EXPORT_BLACKLIST = [    \
 	"em_buffer_join",      \
 	"em_buffer_write",     \
-	"em_buffer_clear"      \
+	"em_buffer_clear",     \
+	"php_request_startup", \
+	"php_request_shutdown" \
 ]
 define EM_EXPORT_ADD_BLACKLIST
 $(eval EM_EXPORT := $(strip $(1)))

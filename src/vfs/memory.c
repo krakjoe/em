@@ -242,6 +242,10 @@ static size_t
         em_vfs_node_t* child;
         size_t coffset = 1;
 
+#ifdef HAVE_EM_ZLIB
+        size_t compression = 0;
+#endif
+
         ZEND_HASH_FOREACH_STR_KEY_PTR(
             &node->data.dir.children, name, child) {
             size_t cwritten =
@@ -249,6 +253,17 @@ static size_t
                     entry, child, &offsets[coffset], start);
             written += cwritten;
             coffset += cwritten;
+#ifdef HAVE_EM_ZLIB
+            if ((*entry)->flags & EM_VFS_MEMORY_COMPRESSED) {
+                if (((compression +=
+                        (*entry)->size.data.compressed) % 1024) == 0) {
+                    emscripten_sleep(1);
+                }
+            } else 
+#endif
+            if ((written % 64) == 0) {
+                emscripten_sleep(10);
+            }
         } ZEND_HASH_FOREACH_END();
     }
 
@@ -496,6 +511,10 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
                 (sizeof(em_vfs_memory_header_t) +
                 header->size.header));
 
+#ifdef HAVE_EM_ZLIB
+    size_t decompression = 0;
+#endif
+
     for (uint32_t i = start; i < end; ++i) {
         em_vfs_memory_entry_t* entry =
             (em_vfs_memory_entry_t*)
@@ -517,6 +536,12 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
 
         if (entry->kind == EM_VFS_DIR) {
             if (em_vfs_mkdir(name)) {
+                /**
+                 * Yield to the browser so it can keep the ui snappy ...
+                 */
+                if ((records % 64) == 0) {
+                    emscripten_sleep(10);
+                }
                 records++;
             }
         } else if (entry->kind == EM_VFS_FILE) {
@@ -548,6 +573,13 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
                 if (em_vfs_put(name,
                         copy,
                         entry->size.data.verbatim)) {
+                    /**
+                     * Yield to the browser so it can keep the ui snappy ...
+                     */
+                    if (((decompression += 
+                            entry->size.data.compressed) % 1024) == 0) {
+                        emscripten_sleep(1);
+                    }
                     records++;
                 }
 
@@ -559,6 +591,12 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
             if (em_vfs_put(name,
                     (const char*)data,
                     entry->size.data.verbatim)) {
+                /**
+                 * Yield to the browser so it can keep the ui snappy ...
+                 */
+                if ((records % 64) == 0) {
+                    emscripten_sleep(10);
+                }
                 records++;
             }
         }

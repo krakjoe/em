@@ -145,8 +145,7 @@ static zend_always_inline zend_result
     em_http_activate();
     em_vfs_activate();
 
-    zend_compile_func = zend_compile_file;
-    zend_compile_file = em_compile_file;
+    EG(full_tables_cleanup) = 1;
 
     return SUCCESS;
 }
@@ -215,7 +214,8 @@ zend_op_array* em_compile_string(const char* code, size_t length) {
     fh.handle.stream.fsizer = em_string_length;
     fh.handle.stream.isatty = 0;
     zend_op_array* compiled =
-        zend_compile_file(&fh, ZEND_INCLUDE);
+        zend_compile_file(
+            &fh, ZEND_INCLUDE);
     zend_destroy_file_handle(&fh);
     return compiled;
 }
@@ -226,7 +226,8 @@ zend_op_array* em_compile_script(const char* script) {
     fh.type = ZEND_HANDLE_FILENAME;
     fh.handle.stream.isatty = 0;
     zend_op_array* compiled =
-        zend_compile_file(&fh, ZEND_INCLUDE);
+        zend_compile_file(
+            &fh, ZEND_INCLUDE);
     zend_destroy_file_handle(&fh);
     return compiled;
 }
@@ -253,8 +254,6 @@ static zend_always_inline void em_deactivate(void) {
     em_mutators_deactivate();
 
     php_request_shutdown((void*) NULL);
-
-    zend_compile_file = zend_compile_func;
 } /* }}} */
 
 /* {{{ exports */
@@ -303,6 +302,9 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     em_vfs_startup();
 
     php_import_environment_variables = em_dispatch_env_import;
+
+    zend_compile_func = zend_compile_file;
+    zend_compile_file = em_compile_file;
 
     return SUCCESS;
 }

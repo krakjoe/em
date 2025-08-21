@@ -1043,22 +1043,30 @@ Module.vfs = {
         address = null;
 
         constructor(path = '/') {
-            if (!(path instanceof Uint8Array)) {
-                this.address = Module.ccall(
+            this.path = path;
+        }
+
+        async load() {
+            if (!(this.path instanceof Uint8Array)) {
+                this.address = await Module.ccall(
                     'em_vfs_memory_alloc',
                     'number',
                     [ 'string' ],
-                    [ path ]);
+                    [ this.path ], { async: true });
                 if (!this.address) {
                     throw new Error(
                         `Failed to stream vfs at ${path}`)
                 };
             } else {
                 this.address =
-                    Module._malloc(path.length);
-                Module.HEAPU8.set(path, this.address);
+                    Module._malloc(this.path.length);
+                Module.HEAPU8.set(
+                    this.path, this.address);
             }
+            return this.parse();
+        }
 
+        async parse() {
             this.header  = {
                 magic:   Module.encoding.latin1.out(  /* char[6] */
                     new Uint8Array(Module.HEAPU8.buffer, this.address, 6)
@@ -1250,16 +1258,17 @@ Module.vfs = {
          * Note the number of records written may not match the number given
          * it depends which order the directories are created, which is not ideal ...
          */
-        write(offset = 0, records = 0) {
+        async write(offset = 0, records = 0) {
             if (!this.memory.address) {
                 throw new Error(
                     "Invalid Call, memory already free");
             }
-            const result = Module.ccall(
+            const result = await Module.ccall(
                 'em_vfs_memory_write',
                 'number',
                 [ 'number', 'number', 'number' ],
-                [ this.memory.address, offset, records ]
+                [ this.memory.address, offset, records ],
+                { async: true }
             );
             if (result) {
                 Module.dispatchEvent(new CustomEvent('vfs.modified', { 
@@ -1399,16 +1408,19 @@ Module.vfs = {
             this.dirty = true;
         }
 
-        onTick = () => {
+        onTick = async () => {
             if (this.dirty) {
-                this.onDirty();
+                await
+                    this.onDirty();
                 this.dirty = false;
             }
             this.ticking = setTimeout(this.onTick, this.tick);
         }
 
         onDirty = async () => {
-            this.memory = new Module.vfs.Memory();
+            this.memory =
+                new Module.vfs.Memory();
+            await this.memory.load();
 
             const buffer = new Uint8Array(
                 Module.HEAPU8.buffer, 
@@ -1432,16 +1444,19 @@ Module.vfs = {
         }
 
         onEnable = async () => {
+            let memory = null;
             try {
-                const data   = await this.fs.readFile(this.path);
-                const memory = new Module.vfs.Memory(data);
-                const writer = 
-                    new Module.vfs.Writer(memory);
-                writer.write();
-                memory.free();
+                const data  = await this.fs.readFile(this.path);
+                memory =
+                    new Module.vfs.Memory(data);
             } catch (error) {
                 console.warn(
                     'persistence cant find disk', error);
+            } finally {
+                await memory.load();
+                const writer = 
+                        new Module.vfs.Writer(memory);
+                await writer.write();
             }
 
             Module.addEventListener(
@@ -1524,7 +1539,7 @@ Module['onRuntimeInitialized'] = function() {
     Module.dispatchEvent = (event) =>
         Module.events.dispatchEvent(event);
 
-    Module.vfs.persistence =
+    Module.persistence =
         new Module.vfs.Persistence();
-    Module.vfs.persistence.enable();
+    Module.persistence.enable();
 };

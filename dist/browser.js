@@ -56,6 +56,7 @@ class Browser {
                 console.log(`[browser:${this.uuid}] Requesting ${event.data.url}`, event.data);
                 window.updateStatus(
                     `Loading ${event.data.url}`)
+
                 try {
                     const response = await Module.dispatch(
                         Module.encoding.latin1.in(JSON.stringify({
@@ -63,7 +64,10 @@ class Browser {
                             SERVER_POST:     window.location.port ?
                                                 window.location.port : 80,
                             DOCUMENT_ROOT: this.droot,
-                            VIRTUAL_ROOT:  this.vroot
+                            VIRTUAL_ROOT:  this.vroot,
+                            HTTP_HOST: window.location.hostname,
+                            HTTP_PORT: window.location.port ?
+                                                window.location.port : 80
                         })),
                         new Uint8Array(event.data.head),
                         event.data.body ?
@@ -212,7 +216,7 @@ window.setUpBrowserContainer = async function(container) {
                     window.browserTab.history.length - 1;
                 window.updateBrowserButtons(container);
             }
-        } catch (e) {} 
+        } catch (e) {}
     });
 }
 

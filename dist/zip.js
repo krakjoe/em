@@ -22,6 +22,8 @@ const ZipManager = {
         }
 
         try {
+            Module.persistence.disable();
+
             const zip = await JSZip.loadAsync(file);
             let importedCount = 0;
             const errors = [];
@@ -72,6 +74,9 @@ const ZipManager = {
                 error: error.message,
                 message: `Failed to import ZIP: ${error.message}`
             };
+        } finally {
+            Module.persistence.enable();
+            Module.persistence.onDirty();
         }
     },
 

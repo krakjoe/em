@@ -75,9 +75,14 @@ static char* em_mutators_href(em_dispatch_context_t* context, const char* href, 
         return NULL;
     }
 
-    // Remove leading slash from href if present
+    // Do not mutate relative links
+    if (href[0] != '/') {
+        return NULL;
+    }
+
+    // Remove leading slash from href
     size_t hoffset = 0;
-    if (length > 0 && href[0] == '/') {
+    if (length > 0) {
         hoffset = 1;
         length -= 1;
     }
@@ -153,9 +158,6 @@ static bool em_mutators_html(em_dispatch_context_t* context) {
         smart_str_appendl(&new_content,
             context->buffers.response.body.value + last_pos,
             ovector[0] - last_pos);
-
-        // Extract attribute name and value
-        size_t value_len = ovector[5] - ovector[4];
 
         // This is nasty, wasm doesn't like locals ...
         char attr_name[32];

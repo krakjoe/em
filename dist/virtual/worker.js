@@ -71,7 +71,7 @@ self.addEventListener('fetch', event => {
             method:  event.request.method,
             url:     event.request.url,
             head:    encoder.encode(head),
-            body:    body,
+            body:    new Uint8Array(body),
         });
 
         return resolveResponse(promise, event);

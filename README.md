@@ -36,11 +36,24 @@ No installation required - just click and start coding PHP instantly!
 - And many more PHP extensions
 
 ### 🖥️ **Desktop Application**
-Download the desktop version for offline development:
 
-- [**Linux**](https://nightly.link/krakjoe/em/workflows/em/develop/electron-ubuntu-latest.zip)
-- [**macOS**](https://nightly.link/krakjoe/em/workflows/em/develop/electron-macos-latest.zip)
-- [**Windows**](https://nightly.link/krakjoe/em/workflows/em/develop/electron-windows-latest.zip)
+Download the desktop version for offline development (uses electron):
+
+| OS      | Arch  |  Format    | Link                                                                                     |
+|:--------|:-----:|:----------:|:-----------------------------------------------------------------------------------------|
+| Linux   |  x64  | AppImage   | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-linux-x64-AppImage)   |
+| Linux   | arm64 | AppImage   | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-linux-arm64-AppImage) |
+| Linux   |  x64  | zip        | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-linux-x64-zip)        |
+| Linux   | arm64 | zip        | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-linux-arm64-zip)      |
+| MacOS   |  x64  | dmg        | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-macos-x64-dmg )       |
+| MacOS   | arm64 | dmg        | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-macos-arm64-dmg)      |
+| MacOS   |  x64  | zip        | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-macos-x64-zip)        |
+| MacOS   | arm64 | zip        | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-macos-arm64-zip)      |
+| Windows |  x64  | portable   | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-windows-x64-exe)      |
+| Windows |  x64  | setup      | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-windows-x64-nsis)     |
+| Windows |  x64  | zip        | [Download](https://nightly.link/krakjoe/em/workflows/em/develop/em-windows-x64-zip)      |
+
+***Note: Electron builds need to be started with `--no-sandbox` to function properly; It's a good idea to create a launcher for your operating system that automatically starts the application with `--no-sanbbox`. This is an annoyance and limitation of electron-builder that I can't find a gracious way around ...***
 
 ## 🛠️ Use Cases
 
