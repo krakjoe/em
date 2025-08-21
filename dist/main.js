@@ -22,6 +22,7 @@ let editor = null;
 let currentContextPath = null;
 let isReady = false;
 let currentPHPVersion;
+let expandedDirs = null;
 
 const tabBar = document.getElementById('tabBar');
 const tabContainer = document.querySelector('.tab-container');
@@ -312,13 +313,15 @@ function renderFileItems(files, container, basePath) {
         const item = document.createElement('div');
         item.className = 'file-item';
         let fullPath = basePath.endsWith('/') ? basePath + file.name : basePath + '/' + file.name;
-        item.dataset.path = normalizePath(fullPath);
+        fullPath = normalizePath(fullPath);
+        item.dataset.path = fullPath;
         if (file.kind === Module.vfs.EM_VFS_DIR) {
             item.classList.add('directory');
             const expandIcon = document.createElement('span');
             expandIcon.className = 'expand-icon';
-            expandIcon.textContent = file.children ? '▼' : '▶';
-            if (file.children) expandIcon.classList.add('expanded');
+            const isExpanded = expandedDirs.has(fullPath);
+            expandIcon.textContent = isExpanded ? '▼' : '▶';
+            if (isExpanded) expandIcon.classList.add('expanded');
             item.appendChild(expandIcon);
             const icon = document.createElement('span');
             icon.className = 'file-icon';
@@ -331,8 +334,9 @@ function renderFileItems(files, container, basePath) {
             container.appendChild(item);
             if (file.children) {
                 const childrenContainer = document.createElement('div');
-                childrenContainer.className = 'file-children expanded';
-                renderFileItems(file.children, childrenContainer, basePath + file.name + '/');
+                childrenContainer.className = 'file-children';
+                if (isExpanded) childrenContainer.classList.add('expanded');
+                renderFileItems(file.children, childrenContainer, fullPath + '/');
                 container.appendChild(childrenContainer);
             }
             expandIcon.addEventListener('click', (e) => {
@@ -357,7 +361,8 @@ function renderFileItems(files, container, basePath) {
 }
 
 function getFileIcon(filename) {
-    const ext = filename.split('.').pop().toLowerCase();
+    const ext = filename.split('.')
+        .pop().toLowerCase();
     switch (ext) {
         case 'php': return '🐘';
         case 'js': return '📜';
@@ -371,20 +376,47 @@ function getFileIcon(filename) {
     }
 }
 
+function initializeExpandedDirs() {
+    const storedExpandedDirs = localStorage
+        .getItem('em-expanded-dirs');
+    if (storedExpandedDirs) {
+        try {
+            expandedDirs = new Set(
+                JSON.parse(
+                    storedExpandedDirs));
+        } catch (e) {
+            expandedDirs = new Set();
+        }
+    } else {
+        expandedDirs = new Set();
+    }
+}
+
+function updateExpandedDirs() {
+    localStorage.setItem(
+        'em-expanded-dirs',
+        JSON.stringify(
+            Array.from(expandedDirs)));
+}
+
 function toggleDirectory(item) {
     const expandIcon = item.querySelector('.expand-icon');
     const nextSibling = item.nextElementSibling;
+    const dirPath = item.dataset.path;
     if (nextSibling && nextSibling.classList.contains('file-children')) {
         if (nextSibling.classList.contains('expanded')) {
             nextSibling.classList.remove('expanded');
             expandIcon.textContent = '▶';
             expandIcon.classList.remove('expanded');
+            expandedDirs.delete(dirPath);
         } else {
             nextSibling.classList.add('expanded');
             expandIcon.textContent = '▼';
             expandIcon.classList.add('expanded');
+            expandedDirs.add(dirPath);
         }
     }
+    updateExpandedDirs();
 }
 
 function selectFile(item) {
@@ -1590,6 +1622,7 @@ window.createExportFilename = function(path, ext) {
 document.addEventListener('DOMContentLoaded', async () => {
     currentPHPVersion =
         localStorage.getItem('em-php-version') || '8.3';
+    initializeExpandedDirs();
     initializeEditor();
     await initializeBrowser();
     initializeConfiguration();

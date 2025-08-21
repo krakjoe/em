@@ -114,6 +114,12 @@ self.addEventListener('message', event => {
                         console.warn(
                             `[worker:${uuid}] Nothing Pending`);
                     }
+                } else if (event.data.type === 'CLIENT_PING') {
+                    console.log(`[worker:${uuid}] Pinged`);
+                    channel.postMessage({
+                        type: 'CLIENT_PONG',
+                        uuid: uuid
+                    });
                 }
             });
             console.log(

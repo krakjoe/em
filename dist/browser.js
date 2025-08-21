@@ -30,15 +30,35 @@ class Browser {
                 worker: this.worker,
                 uuid:   this.uuid,
             }, '*');
-        }.bind(this));
+        }.bind(this), { once: true });
 
         this.frame.src = this.boot;
+
+        window.Browser = this;
+    }
+
+    doPingPong() {
+        if (this.pingPongTimeout) {
+            window.clearTimeout(
+                this.pingPongTimeout);
+        }
+
+        this.channel.postMessage({
+            type: 'CLIENT_PING',
+            uuid: this.uuid
+        });
     }
 
     setupChannelListener() {
         this.channel.onmessage = async (event) => {
             if (event.data.type === 'CLIENT_INIT_ACK') {
-                console.log(`[browser:${this.uuid}] Ackowledged`);
+                console.log(
+                    `[browser:${this.uuid}] Ackowledged`);
+                this.doPingPong();
+            } else if (event.data.type == 'CLIENT_PONG') {
+                console.log(`[browser:${this.uuid}] Ponged`);
+                this.pingPongTimeout = window.setTimeout(
+                    this.doPingPong.bind(this), 1000 * 20);
             } else if (event.data.type === 'CLIENT_REQUEST') {                
                 if (typeof Module == 'undefined' || !Module.ready) {
                     console.error(
@@ -274,8 +294,20 @@ window.updateBrowserContainer = async function(container, tab) {
         return;
     }
 
-    window.navigateBrowser(
-        container,
-        tab.history[tab.historyIndex]);
+    const input = container
+        .querySelector(
+            "#browser-url");
+    const last = new URL(
+        tab.history[tab.historyIndex],
+        window.location.origin);
+    const current = new URL(
+        input.value,
+        window.location.origin);
+    if (current.href != last.href) {
+        window.navigateBrowser(
+            container,
+            tab.history[tab.historyIndex]);
+    }
+
     container.style.display = "block";
 };
