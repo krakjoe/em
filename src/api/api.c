@@ -217,15 +217,22 @@ zend_op_array* em_compile_string(const char* code, size_t length) {
     	    .length  = length
     };
 
+    char hashed[64];
+    snprintf(hashed,
+        sizeof(hashed),
+        "string://%08x",
+            zend_hash_func(code, length));
     zend_file_handle fh;
     zend_stream_init_filename(
-    	&fh, "stdin.php");
+    	&fh, hashed);
     fh.type = ZEND_HANDLE_STREAM;
     fh.handle.stream.handle = (void*)&string;
     fh.handle.stream.reader = em_string_read;
     fh.handle.stream.closer = em_string_close;
     fh.handle.stream.fsizer = em_string_length;
     fh.handle.stream.isatty = 0;
+    fh.opened_path = zend_string_init(
+        hashed, strlen(hashed), 0);
     zend_op_array* compiled =
         zend_compile_file(
             &fh, ZEND_INCLUDE);

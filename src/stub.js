@@ -525,8 +525,6 @@ Module.invoke = async function(input, output = undefined) {
         throw new Error("Unexpected result, execution failed");
     }
 
-    console.log(context);
-
     // the code ran, find the address and length of the result
     let result = {
         address: Module.ccall(
