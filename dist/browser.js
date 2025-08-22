@@ -68,6 +68,7 @@ class Browser {
                 try {
                     const response = await Module.dispatch(
                         Module.encoding.latin1.in(JSON.stringify({
+                            SERVER_PROTOCOL: "HTTP/1.0",
                             SERVER_HOSTNAME: window.location.hostname,
                             SERVER_POST:     window.location.port ?
                                                 window.location.port : 80,
@@ -75,7 +76,10 @@ class Browser {
                             VIRTUAL_ROOT:  this.vroot,
                             HTTP_HOST: window.location.hostname,
                             HTTP_PORT: window.location.port ?
-                                                window.location.port : 80
+                                                window.location.port : 80,
+                            HTTPS:
+                                window.location.protocol.includes('https') ?
+                                    "on" : ""
                         })),
                         new Uint8Array(event.data.head),
                         event.data.body ?
