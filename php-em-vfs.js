@@ -159,7 +159,7 @@ class EmVfsToolMode {
     /**
      * Shall create tool.options.out from the contents of tool.options.in
      */
-    create() {
+    async create() {
         if (!this.tool.options.in) {
             this.tool.logger.error(
                 `Creation Mode requires --in`);
@@ -216,6 +216,7 @@ class EmVfsToolMode {
             `streaming ${this.tool.options.out}`);
         this.memory =
             new this.tool.Module.vfs.Memory();
+        await this.memory.load();
         this.tool.logger.debug(
             `stream ${this.memory.header.size.consumed} bytes`);
         fs.writeFileSync(
@@ -232,7 +233,7 @@ class EmVfsToolMode {
     /**
      * Shall extract the contents of tool.options.in into tool.options.out
      */
-    extract() {
+    async extract() {
         if (!this.tool.options.in) {
             this.tool.logger.error(
                 `Extraction Mode requires --in`);
@@ -272,6 +273,8 @@ class EmVfsToolMode {
             new this.tool.Module.vfs.Memory(
                 new Uint8Array(
                     fs.readFileSync(this.tool.options.in)));
+        await this.memory.load();
+        
         this.tool.logger.debug(
             `stream  ${this.memory.header.size.consumed} bytes`);
         this.reader =

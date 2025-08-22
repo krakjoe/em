@@ -42,31 +42,11 @@ class Browser {
         }, '*');
     }
     
-    doPingPong() {
-        if (this.pingPongTimeout) {
-            window.clearTimeout(
-                this.pingPongTimeout);
-        }
-        this.frame.contentWindow.fetch(
-            this.boot + '?ping=true'
-        ).then(() => {
-            this.channel.postMessage({
-                type: 'CLIENT_PING',
-                uuid: this.uuid,
-                hash: crypto.randomUUID()
-            });
-        });
-    }
-
     setupChannelListener() {
         this.channel.onmessage = async (event) => {
             if (event.data.type === 'CLIENT_INIT_ACK') {
                 console.log(
                     `[browser:${this.uuid}] Ackowledged`);
-                this.doPingPong();
-            } else if (event.data.type == 'CLIENT_PONG') {
-                this.pingPongTimeout = window.setTimeout(
-                    this.doPingPong.bind(this), 1000 * 5);
             } else if (event.data.type === 'CLIENT_REQUEST') {                
                 if (typeof Module == 'undefined' || !Module.ready) {
                     console.error(
