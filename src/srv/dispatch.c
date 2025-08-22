@@ -678,8 +678,6 @@ void em_dispatch_script(em_dispatch_context_t* context) {
         return;
     }
 
-    em_dispatch_header(context,
-        "Status: 200 OK");
     em_dispatch_nocache(context);
     em_execute(ops);
     em_mutators_mutate(context);
@@ -696,8 +694,6 @@ void em_dispatch_code(em_dispatch_context_t* context) {
         return;
     }
 
-    em_dispatch_header(context,
-        "Status: 200 OK");
     em_dispatch_nocache(context);
     em_execute(ops);
     em_mutators_mutate(context);
