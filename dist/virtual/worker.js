@@ -80,8 +80,6 @@ class State {
 }
 
 function initializeChannel() {
-    console.log(
-        `[worker:${uuid}] Initializing`);
     channel = new BroadcastChannel(
         `em-browser:${uuid}`);
     channel.addEventListener('message', async (event) => {
@@ -99,12 +97,6 @@ function initializeChannel() {
                     `[worker:${uuid}] Nothing Pending for ${event.data.id}`);
             }
         }
-    });
-    console.log(
-        `[worker:${uuid}] Acknowledging`);
-    channel.postMessage({ 
-        type: 'CLIENT_INIT_ACK',
-        uuid: uuid
     });
     return channel;
 }
@@ -222,7 +214,15 @@ self.addEventListener('message', async (event) => {
 
             boot    = event.data.boot;
             uuid    = event.data.uuid;
+            console.log(
+                `[worker:${uuid}] Initializing`);
             channel = initializeChannel();
+            console.log(
+                `[worker:${uuid}] Acknowledging`);
+            channel.postMessage({ 
+                type: 'CLIENT_INIT_ACK',
+                uuid: uuid
+            });
             return;
     }
 });
