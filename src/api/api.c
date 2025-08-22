@@ -152,6 +152,7 @@ static zend_always_inline zend_result
         /* alway set a valid status code for response
             in case the system goes down during startup */
         SG(sapi_headers).http_response_code = 200;
+        SG(sapi_headers).http_status_line   = NULL;
     }
 
     em_mutators_activate();
