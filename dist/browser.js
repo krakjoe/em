@@ -259,23 +259,14 @@ window.navigateBrowser = async function(container, toUrl) {
     }
 
     const input = container
-        .querySelector("#browser-url");
+        .querySelector(
+            "#browser-url");
     const frame = container
         .querySelector(
             "#browser-frame");
 
-    await frame.contentWindow.fetch(url).then(async (response) => {
-        if (response.status == 200 || response.status == 500) {
-            frame.src   = url;
-            input.value = url;
-        } else {
-            /* 400, maybe the worker went away, reboot, retry */
-            const location = frame.Browser.boot 
-                + `?retry=${encodeURIComponent(url)}&status=${response.status}`;
-            frame.src = location;
-            input.value = location;
-        }
-    });
+    input.value = url;
+    frame.src   = url;
 
     window.updateBrowserButtons(container);
 }
