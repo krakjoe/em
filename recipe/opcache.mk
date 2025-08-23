@@ -27,6 +27,12 @@
 ########################################################################
 ifeq ($(call EM_PHP_VERSION_GE,80400),true)
 ########################################################################
+# Some ini things ...
+########################################################################
+EM_OPCACHE_INI_ENABLED       ?= 1
+EM_OPCACHE_INI_CONSUMPTION   ?= 128
+EM_OPCACHE_INI_OPTIMIZATIONS ?= 0 # Play, if you know what you are doing
+########################################################################
 # Inject stub for build
 ########################################################################
 $(eval $(call \
@@ -34,6 +40,15 @@ $(eval $(call \
 		$(EM_RECIPE_STUBS)/shm.c))
 $(eval $(call \
 	EM_RECIPE_ADD_CFLAGS, -DHAVE_EM_SHM))
+$(eval $(call \
+	EM_RECIPE_ADD_CFLAGS, \
+		-DEM_OPCACHE_INI_ENABLED=$(EM_OPCACHE_INI_ENABLED)))
+$(eval $(call \
+	EM_RECIPE_ADD_CFLAGS, \
+		-DEM_OPCACHE_INI_CONSUMPTION=$(EM_OPCACHE_INI_CONSUMPTION)))
+$(eval $(call \
+	EM_RECIPE_ADD_CFLAGS, \
+		-DEM_OPCACHE_INI_OPTIMIZATIONS=$(EM_OPCACHE_INI_OPTIMIZATIONS)))
 $(eval $(call \
 	EM_RECIPE_ADD_LINK,\
 		$(EM_RECIPE_STUBS)/initgroups.c))

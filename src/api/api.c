@@ -46,17 +46,26 @@ extern void em_shm_shutdown(void);
 extern sapi_module_struct em_sapi_module;
 
 #if PHP_VERSION_ID >= 80500
-#define EM_INI_OPCACHE \
-    "opcache.enable=1\n" \
-    "opcache.memory_consumption=256\n"
+#define EM_INI_STR(def) #def
+#define EM_INI_XSTR(def) EM_INI_STR(def)
+#define EM_INI_OPCACHE(enabled, consumption, optimizations) \
+    "opcache.enable="EM_INI_XSTR(enabled)"\n" \
+    "opcache.memory_consumption="EM_INI_XSTR(consumption)"\n" \
+    "opcache.optimization_level="EM_INI_XSTR(optimizations)"\n"
 #else
-#define EM_INI_OPCACHE \
+#define EM_OPCACHE_INI_ENABLED
+#define EM_OPCACHE_INI_CONSUMPTION
+#define EM_OPCACHE_INI_OPTIMIZATIONS
+#define EM_INI_OPCACHE(enabled, consumption, optimizations) \
     "opcache.enable=0\n"
 #endif
 
 static const char EM_INI[] =
     "variables_order=EGPCS\n"
-    EM_INI_OPCACHE
+    EM_INI_OPCACHE(
+        EM_OPCACHE_INI_ENABLED,
+        EM_OPCACHE_INI_CONSUMPTION,
+        EM_OPCACHE_INI_OPTIMIZATIONS)
     "allow_url_fopen=1\n"
     "allow_url_include=1\n"
     "html_errors=0\n"
