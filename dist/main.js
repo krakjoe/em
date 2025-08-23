@@ -1634,3 +1634,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 window.openTabs = openTabs;
 window.switchTabView = switchTabView;
+window.Modal = modal;
