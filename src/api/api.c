@@ -708,6 +708,8 @@ static void em_sapi_server(zval *vars)
     if (SG(request_info).path_translated) {
         php_register_variable("SCRIPT_FILENAME",
             (char*)SG(request_info).path_translated, vars);
+        php_register_variable("SCRIPT_NAME",
+            (char*)SG(request_info).path_translated, vars);
         php_register_variable("PHP_SELF",
             (char*)SG(request_info).path_translated, vars);
     }

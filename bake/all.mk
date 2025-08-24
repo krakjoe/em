@@ -22,6 +22,7 @@ $(eval $(call EM_BAKE_RECIPE, filter))
 $(eval $(call EM_BAKE_RECIPE, mbstring))
 $(eval $(call EM_BAKE_RECIPE, opcache))
 $(eval $(call EM_BAKE_RECIPE, tokenizer))
+$(eval $(call EM_BAKE_RECIPE, iconv))
 ########################################################################
 include $(EM_BAKE_IN)/compression.mk
 include $(EM_BAKE_IN)/database.mk

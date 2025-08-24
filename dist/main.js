@@ -302,7 +302,7 @@ function scheduleTreeUpdate(operation) {
 }
 
 function processPendingUpdates() {
-    const batchSize = 50;
+    const batchSize = 50; // Process in chunks to avoid blocking
     let processed = 0;
     
     function processBatch() {
@@ -323,6 +323,26 @@ function processPendingUpdates() {
 
 function updateFileTree(files) {
     const rootItem = fileTree.querySelector('.file-item');
+    
+    // Handle case where root structure doesn't exist yet (fresh loads)
+    if (!rootItem) {
+        // Fall back to creating the structure from scratch
+        let childrenContainer = fileTree.querySelector('.file-children');
+        if (!childrenContainer) {
+            childrenContainer = document.createElement('div');
+            childrenContainer.className = 'file-children expanded';
+            fileTree.appendChild(childrenContainer);
+        } else {
+            // Clear existing content for fresh start
+            childrenContainer.innerHTML = '';
+            childrenContainer.className = 'file-children expanded';
+        }
+        
+        renderFileItems(files, childrenContainer, '/');
+        return;
+    }
+    
+    // Use simple rendering for now to ensure proper DOM structure
     let childrenContainer = fileTree.querySelector('.file-children');
     
     if (!childrenContainer) {
@@ -331,13 +351,80 @@ function updateFileTree(files) {
         fileTree.appendChild(childrenContainer);
     }
     
-    updateFileItems(files, childrenContainer, '/');
+    // Use the simple renderFileItems to ensure correct DOM structure
+    scheduleTreeUpdate(() => {
+        renderFileItems(files, childrenContainer, '/');
+    });
     
     const expandIcon = rootItem.querySelector('.expand-icon');
     if (expandIcon) {
         expandIcon.textContent = '▼';
         expandIcon.classList.add('expanded');
     }
+}
+
+// Fallback function for when DOM diffing isn't appropriate
+function renderFileItems(files, container, basePath) {
+    container.innerHTML = '';
+    files.forEach(file => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        let fullPath = basePath.endsWith('/') ? basePath + file.name : basePath + '/' + file.name;
+        fullPath = normalizePath(fullPath);
+        item.dataset.path = fullPath;
+        
+        if (file.kind === Module.vfs.EM_VFS_DIR) {
+            item.classList.add('directory');
+            const expandIcon = document.createElement('span');
+            expandIcon.className = 'expand-icon';
+            const isExpanded = expandedDirs.has(fullPath);
+            expandIcon.textContent = isExpanded ? '▼' : '▶';
+            if (isExpanded) expandIcon.classList.add('expanded');
+            item.appendChild(expandIcon);
+            
+            const icon = document.createElement('span');
+            icon.className = 'file-icon';
+            icon.textContent = '📁';
+            item.appendChild(icon);
+            
+            const name = document.createElement('span');
+            name.className = 'file-name';
+            name.textContent = file.name;
+            item.appendChild(name);
+            
+            container.appendChild(item);
+            
+            // Always create children container if directory has children
+            if (file.children) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'file-children';
+                if (isExpanded) childrenContainer.classList.add('expanded');
+                renderFileItems(file.children, childrenContainer, fullPath + '/');
+                container.appendChild(childrenContainer);
+            }
+            
+            expandIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleDirectory(item);
+            });
+        } else {
+            const icon = document.createElement('span');
+            icon.className = 'file-icon';
+            icon.textContent = getFileIcon(file.name);
+            item.appendChild(icon);
+            
+            const name = document.createElement('span');
+            name.className = 'file-name';
+            name.textContent = file.name;
+            item.appendChild(name);
+            
+            container.appendChild(item);
+        }
+        
+        item.addEventListener('click', () => selectFile(item));
+        item.addEventListener('dblclick', () => openFile(item.dataset.path));
+        item.addEventListener('contextmenu', (e) => showContextMenu(e, item.dataset.path));
+    });
 }
 
 function updateFileItems(newFiles, container, basePath) {
@@ -482,10 +569,12 @@ function createNewItem(file, fullPath, container, targetPosition) {
             toggleDirectory(item);
         });
         
-        // Handle children if expanded
-        if (isExpanded && file.children) {
+        // Always create children container if directory has children
+        if (file.children && file.children.length > 0) {
             const childrenContainer = document.createElement('div');
-            childrenContainer.className = 'file-children expanded';
+            childrenContainer.className = isExpanded ? 'file-children expanded' : 'file-children';
+            
+            // Always populate the children - toggleDirectory expects them to exist
             updateFileItems(file.children, childrenContainer, fullPath + '/');
             
             // Insert children container after item
@@ -507,6 +596,7 @@ function createNewItem(file, fullPath, container, targetPosition) {
     item.addEventListener('dblclick', () => openFile(item.dataset.path));
     item.addEventListener('contextmenu', (e) => showContextMenu(e, item.dataset.path));
     
+    // Insert at correct position
     insertAtPosition(container, item, targetPosition * 2);
 }
 

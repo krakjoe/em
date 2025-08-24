@@ -70,7 +70,7 @@ class Browser {
                         Module.encoding.latin1.in(JSON.stringify({
                             SERVER_PROTOCOL: "HTTP/1.0",
                             SERVER_HOSTNAME: window.location.hostname,
-                            SERVER_POST:     window.location.port ?
+                            SERVER_PORT:     window.location.port ?
                                                 window.location.port : 80,
                             DOCUMENT_ROOT: this.droot,
                             VIRTUAL_ROOT:  this.vroot,
