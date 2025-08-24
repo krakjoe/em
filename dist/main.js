@@ -16,12 +16,14 @@ const demos = {
 const modal = new Modal();
 
 // 2. Global state variables
-let currentOpenTab = null;
-let openTabs = [];
-let editor = null;
-let currentContextPath = null;
 let isReady = false;
 let currentPHPVersion;
+let currentOpenTab = null;
+let currentContextPath = null;
+let openTabs = [];
+let editor = null;
+let pendingUpdates = [];
+let updateScheduled = false;
 let expandedDirs = null;
 
 const tabBar = document.getElementById('tabBar');
@@ -271,11 +273,12 @@ function refreshFileTree() {
     if (!isReady || !Module || !Module.vfs) {
         return;
     }
+
     let iterator = null;
     try {
         iterator = Module.vfs.iterate('/');
         const files = iterator.all(true);
-        renderFileTree(files);
+        updateFileTree(files);
     } catch (error) {
         console.error('Error refreshing file tree:', error);
         updateStatus('Error refreshing file tree', 'error');
@@ -286,78 +289,289 @@ function refreshFileTree() {
     }
 }
 
-function renderFileTree(files, container = fileTree, basePath = '/') {
-    if (container === fileTree) {
-        const rootItem = container.querySelector('.file-item');
-        const existingChildren = container.querySelector('.file-children');
-        if (existingChildren) {
-            existingChildren.remove();
-        }
-        if (files.length > 0) {
-            const childrenContainer = document.createElement('div');
-            childrenContainer.className = 'file-children expanded';
-            renderFileItems(files, childrenContainer, '/');
-            container.appendChild(childrenContainer);
-            const expandIcon = rootItem.querySelector('.expand-icon');
-            expandIcon.textContent = '▼';
-            expandIcon.classList.add('expanded');
-        }
-    } else {
-        renderFileItems(files, container, basePath);
+function scheduleTreeUpdate(operation) {
+    pendingUpdates.push(operation);
+    
+    if (!updateScheduled) {
+        updateScheduled = true;
+        requestAnimationFrame(() => {
+            processPendingUpdates();
+            updateScheduled = false;
+        });
     }
 }
 
-function renderFileItems(files, container, basePath) {
-    container.innerHTML = '';
-    files.forEach(file => {
-        const item = document.createElement('div');
-        item.className = 'file-item';
+function processPendingUpdates() {
+    const batchSize = 50;
+    let processed = 0;
+    
+    function processBatch() {
+        while (processed < pendingUpdates.length && processed % batchSize !== batchSize - 1) {
+            pendingUpdates[processed]();
+            processed++;
+        }
+        
+        if (processed < pendingUpdates.length) {
+            requestAnimationFrame(processBatch);
+        } else {
+            pendingUpdates = [];
+        }
+    }
+    
+    processBatch();
+}
+
+function updateFileTree(files) {
+    const rootItem = fileTree.querySelector('.file-item');
+    let childrenContainer = fileTree.querySelector('.file-children');
+    
+    if (!childrenContainer) {
+        childrenContainer = document.createElement('div');
+        childrenContainer.className = 'file-children expanded';
+        fileTree.appendChild(childrenContainer);
+    }
+    
+    updateFileItems(files, childrenContainer, '/');
+    
+    const expandIcon = rootItem.querySelector('.expand-icon');
+    if (expandIcon) {
+        expandIcon.textContent = '▼';
+        expandIcon.classList.add('expanded');
+    }
+}
+
+function updateFileItems(newFiles, container, basePath) {
+    // Create a map of existing items by path for efficient lookup
+    const existingItems = new Map();
+    const existingNodes = Array.from(container.children);
+    
+    existingNodes.forEach(node => {
+        if (node.dataset.path) {
+            existingItems.set(node.dataset.path, node);
+        }
+    });
+    
+    // Create map of new files by path
+    const newFileMap = new Map();
+    newFiles.forEach(file => {
         let fullPath = basePath.endsWith('/') ? basePath + file.name : basePath + '/' + file.name;
         fullPath = normalizePath(fullPath);
-        item.dataset.path = fullPath;
-        if (file.kind === Module.vfs.EM_VFS_DIR) {
-            item.classList.add('directory');
-            const expandIcon = document.createElement('span');
-            expandIcon.className = 'expand-icon';
-            const isExpanded = expandedDirs.has(fullPath);
-            expandIcon.textContent = isExpanded ? '▼' : '▶';
-            if (isExpanded) expandIcon.classList.add('expanded');
-            item.appendChild(expandIcon);
-            const icon = document.createElement('span');
-            icon.className = 'file-icon';
-            icon.textContent = '📁';
-            item.appendChild(icon);
-            const name = document.createElement('span');
-            name.className = 'file-name';
-            name.textContent = file.name;
-            item.appendChild(name);
-            container.appendChild(item);
-            if (file.children) {
-                const childrenContainer = document.createElement('div');
-                childrenContainer.className = 'file-children';
-                if (isExpanded) childrenContainer.classList.add('expanded');
-                renderFileItems(file.children, childrenContainer, fullPath + '/');
-                container.appendChild(childrenContainer);
-            }
-            expandIcon.addEventListener('click', (e) => {
-                e.stopPropagation();
-                toggleDirectory(item);
-            });
-        } else {
-            const icon = document.createElement('span');
-            icon.className = 'file-icon';
-            icon.textContent = getFileIcon(file.name);
-            item.appendChild(icon);
-            const name = document.createElement('span');
-            name.className = 'file-name';
-            name.textContent = file.name;
-            item.appendChild(name);
-            container.appendChild(item);
-        }
-        item.addEventListener('click', () => selectFile(item));
-        item.addEventListener('dblclick', () => openFile(item.dataset.path));
-        item.addEventListener('contextmenu', (e) => showContextMenu(e, item.dataset.path));
+        newFileMap.set(fullPath, file);
     });
+    
+    // Track which items we've processed to maintain order
+    const processedPaths = new Set();
+    let insertPosition = 0;
+    
+    // Process new files in order
+    newFiles.forEach(file => {
+        let fullPath = basePath.endsWith('/') ? basePath + file.name : basePath + '/' + file.name;
+        fullPath = normalizePath(fullPath);
+        processedPaths.add(fullPath);
+        
+        const existingItem = existingItems.get(fullPath);
+        
+        if (existingItem) {
+            // Item exists, update if necessary and ensure correct position
+            scheduleTreeUpdate(() => updateExistingItem(existingItem, file, fullPath, container, insertPosition));
+        } else {
+            // Item doesn't exist, create it
+            scheduleTreeUpdate(() => createNewItem(file, fullPath, container, insertPosition));
+        }
+        
+        insertPosition++;
+    });
+    
+    // Remove items that no longer exist
+    existingItems.forEach((item, path) => {
+        if (!processedPaths.has(path)) {
+            scheduleTreeUpdate(() => {
+                if (item.parentNode === container) {
+                    // Also remove associated children container if it exists
+                    const nextSibling = item.nextElementSibling;
+                    if (nextSibling && nextSibling.classList.contains('file-children')) {
+                        nextSibling.remove();
+                    }
+                    item.remove();
+                }
+            });
+        }
+    });
+}
+
+function updateExistingItem(item, file, fullPath, container, targetPosition) {
+    // Update the item's content if necessary
+    const currentIcon = item.querySelector('.file-icon');
+    const currentName = item.querySelector('.file-name');
+    
+    if (file.kind === Module.vfs.EM_VFS_DIR) {
+        const expectedIcon = '📁';
+        if (currentIcon && currentIcon.textContent !== expectedIcon) {
+            currentIcon.textContent = expectedIcon;
+        }
+    } else {
+        const expectedIcon = getFileIcon(file.name);
+        if (currentIcon && currentIcon.textContent !== expectedIcon) {
+            currentIcon.textContent = expectedIcon;
+        }
+    }
+    
+    if (currentName && currentName.textContent !== file.name) {
+        currentName.textContent = file.name;
+    }
+    
+    // Ensure correct position in container
+    const currentPosition = Array.from(container.children).indexOf(item);
+    const actualTargetPosition = targetPosition * 2; // Account for children containers
+    
+    if (currentPosition !== actualTargetPosition && currentPosition !== -1) {
+        const targetChild = container.children[actualTargetPosition];
+        if (targetChild && targetChild !== item) {
+            container.insertBefore(item, targetChild);
+            
+            // Move associated children container if it exists
+            const childrenContainer = item.nextElementSibling;
+            if (childrenContainer && childrenContainer.classList.contains('file-children')) {
+                container.insertBefore(childrenContainer, item.nextElementSibling);
+            }
+        }
+    }
+    
+    // Handle directory children
+    if (file.kind === Module.vfs.EM_VFS_DIR && file.children) {
+        const isExpanded = expandedDirs.has(fullPath);
+        if (isExpanded) {
+            let childrenContainer = item.nextElementSibling;
+            if (!childrenContainer || !childrenContainer.classList.contains('file-children')) {
+                childrenContainer = document.createElement('div');
+                childrenContainer.className = 'file-children expanded';
+                container.insertBefore(childrenContainer, item.nextElementSibling);
+            }
+            updateFileItems(file.children, childrenContainer, fullPath + '/');
+        }
+    }
+}
+
+function createNewItem(file, fullPath, container, targetPosition) {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.dataset.path = fullPath;
+    
+    if (file.kind === Module.vfs.EM_VFS_DIR) {
+        item.classList.add('directory');
+        
+        const expandIcon = document.createElement('span');
+        expandIcon.className = 'expand-icon';
+        const isExpanded = expandedDirs.has(fullPath);
+        expandIcon.textContent = isExpanded ? '▼' : '▶';
+        if (isExpanded) expandIcon.classList.add('expanded');
+        item.appendChild(expandIcon);
+        
+        const icon = document.createElement('span');
+        icon.className = 'file-icon';
+        icon.textContent = '📁';
+        item.appendChild(icon);
+        
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = file.name;
+        item.appendChild(name);
+        
+        expandIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleDirectory(item);
+        });
+        
+        // Handle children if expanded
+        if (isExpanded && file.children) {
+            const childrenContainer = document.createElement('div');
+            childrenContainer.className = 'file-children expanded';
+            updateFileItems(file.children, childrenContainer, fullPath + '/');
+            
+            // Insert children container after item
+            insertAtPosition(container, childrenContainer, (targetPosition * 2) + 1);
+        }
+    } else {
+        const icon = document.createElement('span');
+        icon.className = 'file-icon';
+        icon.textContent = getFileIcon(file.name);
+        item.appendChild(icon);
+        
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = file.name;
+        item.appendChild(name);
+    }
+    
+    item.addEventListener('click', () => selectFile(item));
+    item.addEventListener('dblclick', () => openFile(item.dataset.path));
+    item.addEventListener('contextmenu', (e) => showContextMenu(e, item.dataset.path));
+    
+    insertAtPosition(container, item, targetPosition * 2);
+}
+
+function insertAtPosition(container, element, position) {
+    const children = Array.from(container.children);
+    if (position >= children.length) {
+        container.appendChild(element);
+    } else {
+        container.insertBefore(element, children[position]);
+    }
+}
+
+function applyFileTreeChanges(changes) {
+    changes.forEach(change => {
+        scheduleTreeUpdate(() => {
+            switch (change.type) {
+                case 'added':
+                    handleFileAdded(change.path, change.file);
+                    break;
+                case 'removed':
+                    handleFileRemoved(change.path);
+                    break;
+                case 'modified':
+                    handleFileModified(change.path, change.file);
+                    break;
+            }
+        });
+    });
+}
+
+function handleFileAdded(path, file) {
+    // Implementation for adding individual files
+    const pathParts = path.split('/').filter(p => p);
+    const parentPath = '/' + pathParts.slice(0, -1).join('/');
+    const parentElement = findElementByPath(parentPath);
+    
+    if (parentElement) {
+        const childrenContainer = parentElement.nextElementSibling;
+        if (childrenContainer && childrenContainer.classList.contains('file-children')) {
+            // Add to existing children container
+            createNewItem(file, path, childrenContainer, childrenContainer.children.length / 2);
+        }
+    }
+}
+
+function handleFileRemoved(path) {
+    const element = findElementByPath(path);
+    if (element) {
+        const nextSibling = element.nextElementSibling;
+        if (nextSibling && nextSibling.classList.contains('file-children')) {
+            nextSibling.remove();
+        }
+        element.remove();
+    }
+}
+
+function handleFileModified(path, file) {
+    const element = findElementByPath(path);
+    if (element) {
+        updateExistingItem(element, file, path, element.parentNode, 0);
+    }
+}
+
+function findElementByPath(path) {
+    return fileTree.querySelector(`[data-path="${path}"]`);
 }
 
 function getFileIcon(filename) {
@@ -526,7 +740,6 @@ async function saveCurrentFile() {
         console.error(`Error saving file: ${currentOpenTab.path}`, error);
         updateStatus(`Error saving file: ${currentOpenTab.path}`, 'error');
     } finally {
-        refreshFileTree();
         renderTabs();
     }
 }
@@ -629,6 +842,7 @@ async function createFile() {
         // Modal cancelled
         return;
     }
+    
     filename = (filename || '').trim();
     if (!filename) {
         updateStatus('Please enter a filename', 'error');
@@ -641,7 +855,6 @@ async function createFile() {
                 '/* ' + filename + ' */')
         );
         if (success) {
-            refreshFileTree();
             openFile(filename);
             updateStatus(`Created: ${filename}`, 'success');
         } else {
@@ -680,7 +893,6 @@ async function createFolder() {
     try {
         const success = Module.vfs.mkdir(path);
         if (success) {
-            refreshFileTree();
             updateStatus(`Created folder: ${foldername}`, 'success');
         } else {
             updateStatus(`Failed to create folder: ${foldername}`, 'error');
@@ -727,7 +939,6 @@ function performRename(newName) {
             if (currentOpenTab.path === currentContextPath) {
                 currentOpenTab.path = newPath;
             }
-            refreshFileTree();
             renderTabs();
         } else {
             updateStatus(`Failed to rename: ${currentContextPath}`, 'error');
@@ -818,7 +1029,6 @@ function deleteFile() {
                 if (deletedTab) {
                     closeTabView(deletedTab);
                 }
-                refreshFileTree();
                 updateStatus(`Deleted: ${currentContextPath}`, 'success');
             } else {
                 updateStatus(`Failed to delete: ${currentContextPath}`, 'error');
@@ -954,32 +1164,25 @@ function initializeEventHandlers() {
         e.stopPropagation();
         toggleDirectory(rootItem);
     });
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-            switch (e.key) {
-                case 's':
-                    e.preventDefault();
-                    saveCurrentFile();
-                    break;
-                case 'n':
-                    e.preventDefault();
-                    createFile();
-                    break;
-                case 't':
-                    e.preventDefault();
-                    let baseName = 'untitled.php';
-                    let name = baseName;
-                    let counter = 1;
-                    while (openTabs.some(t => !t.path && t.name === name)) {
-                        name = baseName.replace('.php', `-${counter}.php`);
-                        counter++;
-                    }
-                    openTabs.push({ path: null, name, content: '', unsaved: true });
-                    switchTab(null, name);
-                    break;
-            }
-        }
+}
+
+function createNewTab() {
+    let baseName =
+        'untitled.php';
+
+    let name = baseName;
+    let counter = 1;
+    
+    while (openTabs.some(t => !t.path && t.name === name)) {
+        name = baseName.replace('.php', `-${counter}.php`);
+        counter++;
+    }
+
+    openTabs.push({ 
+        path: null, name, content: '', unsaved: true 
     });
+
+    switchTab(null, name);
 }
 
 function switchPHPVersion() {
@@ -1079,7 +1282,11 @@ function initializeEditor() {
             'Ctrl-Enter': runCode,
             'Cmd-Enter': runCode,
             'Ctrl-S': saveCurrentFile,
-            'Cmd-S': saveCurrentFile
+            'Cmd-S': saveCurrentFile,
+            'Ctrl-Alt-N': createFile,
+            'Cmd-Alt-N': createFile,
+            'Ctrl-Alt-Z': createNewTab,
+            'Cmd-Alt-Z': createNewTab
         }
     });
 
@@ -1400,7 +1607,6 @@ async function loadGithubRepo(repoInput) {
             Module.vfs.put('/' + entry.path, contentBytes);
             fileCount++;
         }
-        refreshFileTree();
         updateStatus(`Loaded ${fileCount} files from ${repo}`, 'success');
     } catch (err) {
         updateStatus('GitHub repo load failed: ' + err.message, 'error');
@@ -1437,7 +1643,6 @@ async function loadGithubGist(gistInput) {
                 fileCount++;
             }
         }
-        refreshFileTree();
         updateStatus(`Loaded ${fileCount} files from gist ${gistId}`, 'success');
     } catch (err) {
         updateStatus('GitHub gist load failed: ' + err.message, 'error');
@@ -1577,7 +1782,6 @@ function loadPHPRuntime() {
                 if (typeof refreshFilesButton !== 'undefined' && refreshFilesButton) refreshFilesButton.disabled = false;
                 Module.addEventListener(
                     "vfs.modified", refreshFileTree);
-                refreshFileTree();
                 initializeParameters();
             } else {
                 setTimeout(checkReady, 100);

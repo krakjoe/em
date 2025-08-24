@@ -1300,8 +1300,8 @@ Module.vfs = {
                 return false;
             }
 
-            this.tick = tick;
-            this.path = path;
+            this.tick      = tick;
+            this.path      = path;
 
             if (Module.electron) {
                 this.fs = window.nodeFS;
@@ -1416,45 +1416,64 @@ Module.vfs = {
         }
 
         onDirty = async () => {
-            this.memory =
-                new Module.vfs.Memory();
-            await this.memory.load();
+            if (this.running) {
+                return;
+            }
 
-            const buffer = new Uint8Array(
-                Module.HEAPU8.buffer, 
-                this.memory.address, 
-                this.memory.header.size.consumed
-            );
-
+            this.running = true;
             try {
+                 this.memory =
+                    new Module.vfs.Memory();
+                await this.memory.load();
+
+                const buffer = new Uint8Array(
+                    Module.HEAPU8.buffer, 
+                    this.memory.address, 
+                    this.memory.header.size.consumed
+                );
+
                 await this.fs.writeFile(this.path, buffer);
             } catch (error) {
                 console.error(
                     'persistence failed', error);
+            } finally {
+                /** cleanup gracefully **/
+                try {
+                    this.memory.free();
+                } catch (e) {}
+
+                this.memory = null;
+
+                /* prevent premature re-entry */
+                this.dirty = 0;
+                this.running = false;
             }
-
-            /** cleanup gracefully **/
-            this.memory.free();
-            this.memory = null;
-
-            /* prevent premature re-entry */
-            this.dirty  = false;
         }
 
         onEnable = async () => {
+            if (this.running) {
+                return;
+            }
+
+            this.running = true;
             try {
                 const data  = await this.fs.readFile(this.path);
                 const memory =
                     new Module.vfs.Memory(data);
-                await memory.load();
-                const writer = 
-                        new Module.vfs.Writer(memory);
-                await writer.write();
+                try {
+                    await memory.load();
+                    const writer = 
+                            new Module.vfs.Writer(memory);
+                    await writer.write();
+                } finally {
+                    memory.free();
+                }
             } catch (error) {
                 console.warn(
                     'persistence cant read disk', error);
+            } finally {
+                this.running = false;
             }
-
             Module.addEventListener(
                 "vfs.modified",
                 this.onModified);
@@ -1481,6 +1500,8 @@ Module.vfs = {
         ticking = null;
         path    = null;
         memory  = null;
+        running = false;
+        dirty   = false;
     }
 };
 
@@ -1489,7 +1510,7 @@ Module['onRuntimeInitialized'] = function() {
 
     if (typeof window !== 'undefined') {
         window.addEventListener('unload', function() {
-            if (typeof Module !== 'undefined' && Module.shutdown) {
+            if (typeof Module !== 'undefined') {
                 Module.shutdown();
             }
         });
@@ -1535,7 +1556,9 @@ Module['onRuntimeInitialized'] = function() {
     Module.dispatchEvent = (event) =>
         Module.events.dispatchEvent(event);
 
-    Module.persistence =
-        new Module.vfs.Persistence();
-    Module.persistence.enable();
+    (async () => {
+        Module.persistence =
+            new Module.vfs.Persistence();
+        await Module.persistence.enable()
+    }) ();
 };

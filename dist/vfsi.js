@@ -79,6 +79,12 @@ const VFSManager = {
                     error: error.message,
                     message: `Failed to import VFS image: ${error.message}`
                 };
+            } finally {
+                if (memory) {
+                    try {
+                        memory.free();
+                    } catch(E) {}
+                }
             }
 
             return {

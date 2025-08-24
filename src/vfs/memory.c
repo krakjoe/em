@@ -20,12 +20,50 @@
 #include "node.h"
 #include "memory.h"
 
+#define EM_VFS_YIELD_RECORDS  128
+#define EM_VFS_YIELD_BYTES    2048
+#define EM_VFS_YIELD_DURATION 1
+
 typedef struct _em_vfs_memory_version_t {
     int      major;
     int      minor;
     int      patch;
     uint64_t combined;
 } em_vfs_memory_version_t;
+
+#ifdef HAVE_EM_ZLIB
+const char* em_vfs_memory_compression_unnecessary[] = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".mp4",
+    ".phar",
+    ".zip",
+    ".vfsi"
+};
+
+static bool em_vfs_memory_compression_required(em_vfs_node_t* node) {
+    char* ext = strrchr(node->name, '.');
+
+    if (!ext) {
+        return true;
+    }
+
+    const char** it  = em_vfs_memory_compression_unnecessary;
+    const char** end = it +
+        sizeof(em_vfs_memory_compression_unnecessary) /
+            sizeof(char*);
+
+    while (it < end) {
+        if (strcasecmp(ext, (*it)) == SUCCESS) {
+            return false;
+        }
+        it++;
+    }
+    return true;
+}
+#endif
 
 static em_vfs_memory_entry_flags_t
     em_vfs_memory_data_flags(
@@ -35,6 +73,9 @@ static em_vfs_memory_entry_flags_t
     }
 #ifdef HAVE_EM_ZLIB
     if (node->data.file.size < EM_VFS_MEMORY_ZLIB_MIN) {
+        return EM_VFS_MEMORY_VERBATIM;
+    }
+    if (!em_vfs_memory_compression_required(node)) {
         return EM_VFS_MEMORY_VERBATIM;
     }
     return EM_VFS_MEMORY_COMPRESSED;
@@ -49,6 +90,13 @@ static em_vfs_memory_entry_size_t em_vfs_memory_data_length(em_vfs_node_t* node)
 
 #ifdef HAVE_EM_ZLIB
     if (node->data.file.size < EM_VFS_MEMORY_ZLIB_MIN) {
+        return (em_vfs_memory_entry_size_t) {
+            .verbatim = node->data.file.size,
+            .compressed = 0
+        };
+    }
+
+    if (!em_vfs_memory_compression_required(node)) {
         return (em_vfs_memory_entry_size_t) {
             .verbatim = node->data.file.size,
             .compressed = 0
@@ -74,6 +122,10 @@ static void em_vfs_memory_data_free(em_vfs_node_t* node, em_vfs_memory_entry_t* 
         return;
     }
 
+    if (!em_vfs_memory_compression_required(node)) {
+        return;
+    }
+
     if (!(entry->flags & EM_VFS_MEMORY_COMPRESSED)) {
         /* compression recovered from errors */
         return;
@@ -86,6 +138,10 @@ static void em_vfs_memory_data_free(em_vfs_node_t* node, em_vfs_memory_entry_t* 
 static void* em_vfs_memory_data_alloc(em_vfs_node_t* node, em_vfs_memory_entry_t *entry) {
 #ifdef HAVE_EM_ZLIB
     if (node->data.file.size < EM_VFS_MEMORY_ZLIB_MIN) {
+        return node->data.file.content;
+    }
+
+    if (!em_vfs_memory_compression_required(node)) {
         return node->data.file.content;
     }
 
@@ -256,13 +312,13 @@ static size_t
 #ifdef HAVE_EM_ZLIB
             if ((*entry)->flags & EM_VFS_MEMORY_COMPRESSED) {
                 if (((compression +=
-                        (*entry)->size.data.compressed) % 1024) == 0) {
-                    emscripten_sleep(1);
+                        (*entry)->size.data.compressed) % EM_VFS_YIELD_BYTES) == 0) {
+                    emscripten_sleep(EM_VFS_YIELD_DURATION);
                 }
             } else 
 #endif
-            if ((written % 64) == 0) {
-                emscripten_sleep(10);
+            if ((written % EM_VFS_YIELD_RECORDS) == 0) {
+                emscripten_sleep(EM_VFS_YIELD_DURATION);
             }
         } ZEND_HASH_FOREACH_END();
     }
@@ -539,8 +595,8 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
                 /**
                  * Yield to the browser so it can keep the ui snappy ...
                  */
-                if ((records % 64) == 0) {
-                    emscripten_sleep(10);
+                if ((records % EM_VFS_YIELD_RECORDS) == 0) {
+                    emscripten_sleep(EM_VFS_YIELD_DURATION);
                 }
                 records++;
             }
@@ -577,8 +633,8 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
                      * Yield to the browser so it can keep the ui snappy ...
                      */
                     if (((decompression += 
-                            entry->size.data.compressed) % 1024) == 0) {
-                        emscripten_sleep(1);
+                            entry->size.data.compressed) % EM_VFS_YIELD_BYTES) == 0) {
+                        emscripten_sleep(EM_VFS_YIELD_DURATION);
                     }
                     records++;
                 }
@@ -594,8 +650,8 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
                 /**
                  * Yield to the browser so it can keep the ui snappy ...
                  */
-                if ((records % 64) == 0) {
-                    emscripten_sleep(10);
+                if ((records % EM_VFS_YIELD_RECORDS) == 0) {
+                    emscripten_sleep(EM_VFS_YIELD_DURATION);
                 }
                 records++;
             }
