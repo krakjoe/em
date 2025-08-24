@@ -69,17 +69,13 @@ class Browser {
                     const response = await Module.dispatch(
                         Module.encoding.latin1.in(JSON.stringify({
                             SERVER_PROTOCOL: "HTTP/1.0",
+                            SERVER_SCHEME: window.location.protocol.substring(
+                                0, window.location.protocol.length - 1),
                             SERVER_HOSTNAME: window.location.hostname,
                             SERVER_PORT:     window.location.port ?
                                                 window.location.port : 80,
                             DOCUMENT_ROOT: this.droot,
-                            VIRTUAL_ROOT:  this.vroot,
-                            HTTP_HOST: window.location.hostname,
-                            HTTP_PORT: window.location.port ?
-                                                window.location.port : 80,
-                            HTTPS:
-                                window.location.protocol.includes('https') ?
-                                    "on" : ""
+                            VIRTUAL_ROOT:  this.vroot
                         })),
                         new Uint8Array(event.data.head),
                         event.data.body ?

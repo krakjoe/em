@@ -22,7 +22,8 @@
 
 #include <SAPI.h>
 
-#include "buffer.h"
+#include <buffer/buffer.h>
+#include <url/url.h>
 
 extern HashTable __em_environ__;
 
@@ -37,6 +38,7 @@ typedef struct _em_dispatch_context_previous_t {
 
 struct _em_dispatch_context_t {
     HashTable environ;
+    em_url_t  url;
     sapi_request_info *info;
 
     struct {

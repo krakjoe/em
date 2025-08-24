@@ -19,11 +19,12 @@
 #ifndef HAVE_EM_MUTATORS
 #define HAVE_EM_MUTATORS
 
-#include "dispatch.h"
-#include "buffer.h"
+#include <srv/dispatch.h>
 
 bool em_mutators_mutate(em_dispatch_context_t* context);
 
+void em_mutators_startup(void);
 void em_mutators_activate(void);
 void em_mutators_deactivate(void);
+void em_mutators_shutdown(void);
 #endif

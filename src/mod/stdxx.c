@@ -18,9 +18,8 @@
 
 #include <SAPI.h>
 
-#include "stdio.h"
-#include "dispatch.h"
-#include "vfs.h"
+#include <srv/dispatch.h>
+#include <vfs/vfs.h>
 
 extern int em_stdio_map[1024];
 

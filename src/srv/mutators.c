@@ -1,6 +1,6 @@
 /*
   +----------------------------------------------------------------------+
-  | em - Clean Parser Implementation                                     |
+  | em                                                                   |
   +----------------------------------------------------------------------+
   | Copyright (c) Joe Watkins 2025                                       |
   +----------------------------------------------------------------------+
@@ -16,11 +16,14 @@
   +----------------------------------------------------------------------+
  */
 
-#include "mutators.h"
+#include <srv/mutators.h>
+#include <buffer/buffer.h>
 
 #include <pcre2.h>
 
 #include <zend_smart_str.h>
+
+static pcre2_code* __em_mutators_html_pattern__;
 
 sapi_header_struct* em_mutators_header(em_dispatch_context_t* context, const char* search) {
     zend_llist_position position;
@@ -60,57 +63,19 @@ static char* em_mutators_href(em_dispatch_context_t* context, const char* href, 
         return NULL;
     }
 
-    // Do not mutate external URLs
-    if ((length >= 7 && strncasecmp(href, "http://", 7) == 0) ||
-        (length >= 8 && strncasecmp(href, "https://", 8) == 0) ||
-        (length >= 2 && href[0] == '/' && href[1] == '/')) {
+    em_url_t destination;
+    em_url_parse(context, href, &destination);
+    if (!em_url_compare(
+            EM_URL_COMPARE_ORIGIN,
+            &context->url,
+            &destination)) {
+        em_url_free(&destination);
         return NULL;
     }
 
-    // Do not mutate if already starts with VIRTUAL_ROOT
-    if (length >= Z_STRLEN_P(vroot) && 
-        strncmp(href,
-            Z_STRVAL_P(vroot),
-            Z_STRLEN_P(vroot)) == SUCCESS) {
-        return NULL;
-    }
-
-    // Do not mutate relative links
-    if (href[0] != '/') {
-        return NULL;
-    }
-
-    // Remove leading slash from href
-    size_t hoffset = 0;
-    if (length > 0) {
-        hoffset = 1;
-        length -= 1;
-    }
-
-    // Add slash between vroot and href if needed
-    size_t rlength;
-    char* rewritten;
-    if (Z_STRLEN_P(vroot) > 0 && Z_STRVAL_P(vroot)[Z_STRLEN_P(vroot)-1] == '/') {
-        rlength = Z_STRLEN_P(vroot) + length;
-        rewritten = emalloc(rlength + 1);
-        memcpy(rewritten,
-            Z_STRVAL_P(vroot),
-            Z_STRLEN_P(vroot));
-        memcpy(rewritten + Z_STRLEN_P(vroot),
-            href + hoffset,
-            length);
-    } else {
-        rlength = Z_STRLEN_P(vroot) + 1 + length;
-        rewritten = emalloc(rlength + 1);
-        memcpy(rewritten,
-            Z_STRVAL_P(vroot),
-            Z_STRLEN_P(vroot));
-        rewritten[Z_STRLEN_P(vroot)] = '/';
-        memcpy(rewritten + Z_STRLEN_P(vroot) + 1,
-            href + hoffset,
-            length);
-    }
-    rewritten[rlength] = '\0';
+    char* rewritten = em_url_string(
+        EM_URL_FQU, &destination);
+    em_url_free(&destination);
     return rewritten;
 }
 
@@ -119,27 +84,10 @@ static bool em_mutators_html(em_dispatch_context_t* context) {
         return false;
     }
 
-    const char *pattern = 
-        "\\b(href|src|action|style)\\s*=\\s*[\"']?(?!data:)([^\"'>\\s]+)[\"']?";
-    size_t pattern_len = strlen(pattern);
-
-    PCRE2_SIZE subject_len = context->buffers.response.body.length;
-    PCRE2_SPTR subject = (PCRE2_SPTR)
-        context->buffers.response.body.value;
-
-    int errorcode;
-    PCRE2_SIZE erroroffset;
-    uint32_t options = PCRE2_CASELESS | PCRE2_DOTALL;
-
-    pcre2_code *re = pcre2_compile(
-        (PCRE2_SPTR)pattern, pattern_len, options, &errorcode, &erroroffset, NULL);
-    if (!re) {
-        return false;
-    }
-
-    pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(re, NULL);
-    if (!match_data) {
-        pcre2_code_free(re);
+    pcre2_match_data *matches =
+        pcre2_match_data_create_from_pattern(
+            __em_mutators_html_pattern__, NULL);
+    if (!matches) {
         return false;
     }
 
@@ -148,8 +96,13 @@ static bool em_mutators_html(em_dispatch_context_t* context) {
     PCRE2_SIZE offset = 0;
     int rc;
 
-    while ((rc = pcre2_match(re, subject, subject_len, offset, 0, match_data, NULL)) >= 0) {
-        PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(match_data);
+    while ((rc = pcre2_match(__em_mutators_html_pattern__,
+            (PCRE2_SPTR)
+                context->buffers.response.body.value,
+            (PCRE2_SIZE)
+                context->buffers.response.body.length,
+            offset, 0, matches, NULL)) >= 0) {
+        PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(matches);
         // ovector[0] = start of full match, ovector[1] = end of full match
         // ovector[2] = start of group 1, ovector[3] = end of group 1
         // ovector[4] = start of group 2, ovector[5] = end of group 2
@@ -196,10 +149,10 @@ static bool em_mutators_html(em_dispatch_context_t* context) {
     }
 
     // Copy remaining content after last match
-    if (last_pos < subject_len) {
+    if (last_pos < context->buffers.response.body.length) {
         smart_str_appendl(&new_content,
-            context->buffers.response.body.value + last_pos,
-            subject_len - last_pos);
+            context->buffers.response.body.value  + last_pos,
+            context->buffers.response.body.length - last_pos);
     }
 
     smart_str_0(&new_content);
@@ -217,8 +170,7 @@ static bool em_mutators_html(em_dispatch_context_t* context) {
         em_mutators_length(context);
     }
 
-    pcre2_match_data_free(match_data);
-    pcre2_code_free(re);
+    pcre2_match_data_free(matches);
 
     return true;
 }
@@ -243,10 +195,40 @@ bool em_mutators_mutate(em_dispatch_context_t* context) {
     return false;
 }
 
+void em_mutators_startup(void) {
+    const char *href =
+        "\\b(href|src|action|style)\\s*=\\s*[\"']?(?!data:)([^\"'>\\s]+)[\"']?";              // fragment (optional, after #)
+
+    int code;
+    PCRE2_SIZE offset;
+
+    __em_mutators_html_pattern__ = pcre2_compile(
+        (PCRE2_SPTR)href,
+                    strlen(href),
+                    PCRE2_CASELESS | PCRE2_DOTALL,
+                    &code,
+                    &offset,
+                    NULL);
+
+    if (!__em_mutators_html_pattern__) {
+        fprintf(stderr,
+            "[mutators] failed to compile "
+            "__em_mutators_html_pattern__ %d at %zu\n",
+            code, offset);
+    }
+}
+
 void em_mutators_activate(void) {
     
 }
 
 void em_mutators_deactivate(void) {
     
+}
+
+void em_mutators_shutdown(void) {
+    if (__em_mutators_html_pattern__) {
+        pcre2_code_free(
+            __em_mutators_html_pattern__);
+    }
 }

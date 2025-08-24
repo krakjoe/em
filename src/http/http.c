@@ -16,8 +16,8 @@
   +----------------------------------------------------------------------+
  */
 
-#include "http.h" 
-#include "request.h"
+#include <http/http.h>
+#include <http/request.h>
 
 #include <php_network.h>
 

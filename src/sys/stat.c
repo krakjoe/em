@@ -18,15 +18,15 @@
 #include <vfs/vfs.h>
 
 /**
- * Many calls within zend up in lstat, so we take over here ...
+ * Many calls within zend up in stat, so we take over here ...
  */
-int lstat(const char *restrict path, struct stat *restrict buf) {
+int stat(const char *restrict path, struct stat *restrict buf) {
     em_vfs_path_t* vpath =
         em_vfs_mkpath(path);
-    
+
     php_stream_statbuf ssb;
     if (em_vfs_stat_path(
-            vpath, &ssb, true) != SUCCESS) {
+            vpath, &ssb, false) != SUCCESS) {
         em_vfs_path_release(vpath);
         return FAILURE;
     }

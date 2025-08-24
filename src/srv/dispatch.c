@@ -16,10 +16,11 @@
   +----------------------------------------------------------------------+
  */
 
-#include "dispatch.h"
-#include "vfs.h"
-#include "api.h"
-#include "mutators.h"
+#include <vfs/vfs.h>
+#include <api/api.h>
+
+#include <srv/dispatch.h>
+#include <srv/mutators.h>
 
 #include <php_variables.h>
 
@@ -215,6 +216,8 @@ void em_dispatch_free(em_dispatch_context_t* context) {
     zend_llist_destroy(&context->headers.request);
     zend_hash_destroy(&context->environ);
 
+    em_url_free(&context->url);
+
     pefree(context, 1);
 }
 
@@ -407,6 +410,12 @@ static em_dispatch_context_t*
     em_dispatch_env(
         &context->environ, env, elen, false);
 
+    if (!em_url_parse(context, initial->value.data, &context->url)) {
+        context->handler =
+            em_dispatch_exception;
+        return context;
+    }
+
     return context;
 }
 
@@ -466,40 +475,13 @@ em_dispatch_context_t* em_dispatch_enter(
         return context;
     }
 
-    info->request_method = estrdup(header->key.data);
-
-    if (header->value.data[0] != '/') {
-        spprintf(
-            &info->request_uri,
-            0,
-            "/%s",
-            header->value.data ?
-                header->value.data : "");
-    } else {
-        info->request_uri = estrdup(header->value.data);
-    }
-
-    info->query_string = strstr(info->request_uri, "?");
-
-    /* first we translate request uri into query string and path */
-    if (info->query_string) {
-        size_t path_translated_length =
-            info->query_string - info->request_uri;
-        info->path_translated =
-            emalloc(path_translated_length + 1);
-        if (!info->path_translated) {
-            /* oom, something else will crash the process, gracefully */
-            return NULL;
-        }
-        memcpy(
-            info->path_translated,
-            info->request_uri,
-            path_translated_length);
-        info->path_translated[path_translated_length] = '\0';
-        info->query_string++;
-    } else {
-        info->path_translated = estrdup(info->request_uri);
-    }
+    info->request_method =
+        estrdup(header->key.data);
+    info->request_uri     = estrdup(context->url.uri);
+    info->query_string    = context->url.query ?
+                                estrdup(context->url.query) :
+                                    NULL;
+    info->path_translated = estrdup(context->url.path.vfs);
 
     while ((header = zend_llist_get_next_ex(&context->headers.request, &position))) {
         if (header->key.len == sizeof("content-type")-1 &&
@@ -509,54 +491,6 @@ em_dispatch_context_t* em_dispatch_enter(
                    strncasecmp(header->key.data, "content-length", header->key.len) == 0) {
             info->content_length = atol(header->value.data);
         }
-    }
-
-    zval* vroot = zend_hash_str_find(
-        &context->environ, ZEND_STRL("VIRTUAL_ROOT"));
-
-    if (vroot) {
-        size_t vlength = Z_STRLEN_P(vroot);
-        if (strncmp(info->path_translated,
-                Z_STRVAL_P(vroot), vlength) == SUCCESS) {
-            size_t length = strlen(
-                info->path_translated) - vlength;
-
-            char* path_translated = emalloc(length + 1);
-            memcpy(
-                path_translated,
-                info->path_translated +
-                    vlength, length);
-            path_translated[length] = '\0';
-            efree(info->path_translated);
-            
-            info->path_translated = path_translated;
-        }
-    }
-
-    zval* droot = zend_hash_str_find(
-        &context->environ, ZEND_STRL("DOCUMENT_ROOT"));
-
-    if (droot) {
-        size_t dlength = Z_STRLEN_P(droot);
-        size_t length  = strlen(info->path_translated);
-        int slashing   = ((dlength && Z_STRVAL_P(droot)[dlength-1] != '/') &&
-                          (length &&     info->path_translated[0]  != '/'));
-        size_t nlength = dlength + slashing + length;
-
-        char* path_translated = emalloc(nlength + 1);
-        memcpy(path_translated, Z_STRVAL_P(droot), dlength);
-        if (slashing) {
-            path_translated[dlength] = '/';
-            memcpy(path_translated + dlength + 1,
-                info->path_translated, length);
-        } else {
-            memcpy(path_translated + dlength,
-                info->path_translated, length);
-        }
-        path_translated[nlength] = '\0';
-        efree(info->path_translated);
-
-        info->path_translated = path_translated;
     }
 
     const char* address = em_vfs_get_address(info->path_translated);

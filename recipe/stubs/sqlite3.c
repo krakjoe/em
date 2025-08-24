@@ -19,7 +19,7 @@
 #include <emscripten.h>
 #include <sqlite3.h>
 
-#include "vfs.h"
+#include <vfs/vfs.h>
 
 /* SQLite file handle for em VFS */
 typedef struct em_sqlite_file {

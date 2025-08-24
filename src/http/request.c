@@ -18,8 +18,8 @@
 
 #include <php.h>
 
-#include "http.h"
-#include "request.h"
+#include <http/http.h>
+#include <http/request.h>
 
 HashTable __em_http_requests__;
 

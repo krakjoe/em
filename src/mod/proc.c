@@ -21,7 +21,7 @@
 
 #include <SAPI.h>
 
-#include "proc.h"
+#include <mod/proc.h>
 
 typedef struct _em_proc_t em_proc_t;
 

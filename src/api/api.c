@@ -29,14 +29,15 @@
 #include <zend_exceptions.h>
 #include <ext/json/php_json.h>
 
-#include "buffer.h"
-#include "vfs.h"
-#include "http.h"
-#include "api.h"
-#include "dispatch.h"
-#include "mutators.h"
-#include "stdxx.h"
-#include "proc.h"
+#include <buffer/buffer.h>
+#include <url/url.h>
+#include <vfs/vfs.h>
+#include <http/http.h>
+#include <api/api.h>
+#include <srv/dispatch.h>
+#include <srv/mutators.h>
+#include <mod/stdxx.h>
+#include <mod/proc.h>
 
 #ifdef HAVE_EM_SHM
 extern void em_shm_startup(void);
@@ -328,12 +329,14 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     sapi_module.ub_write    = em_dispatch_writer;
     sapi_module.log_message = em_buffer_log;
 
+    em_url_startup();
+    em_mutators_startup();
     em_proc_startup();
     em_stdxx_startup();
     em_dispatch_startup();
     em_http_startup();
     em_vfs_startup();
-
+    
     php_import_environment_variables = em_dispatch_env_import;
 
     zend_compile_func = zend_compile_file;
@@ -440,6 +443,8 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
     em_dispatch_shutdown();
     em_http_shutdown();
     em_vfs_shutdown();
+    em_mutators_shutdown();
+    em_url_shutdown();
 
     sapi_module.ub_write = zend_write_func;
     sapi_module.log_message = zend_log_func;
@@ -695,22 +700,32 @@ static void em_sapi_server(zval *vars)
 
 	php_import_environment_variables(vars);
 
-    if (SG(request_info).request_method) {
+    if (context->url.kind != EM_URL_UNUSED) {
         php_register_variable("REQUEST_METHOD",
             (char*)SG(request_info).request_method, vars);
-    }
 
-    if (SG(request_info).request_uri) {
-        php_register_variable("REQUEST_URI",
-            (char*)SG(request_info).request_uri, vars);
-    }
-
-    if (SG(request_info).path_translated) {
         php_register_variable("SCRIPT_FILENAME",
-            (char*)SG(request_info).path_translated, vars);
+            (char*)context->url.path.vfs, vars);
+
         php_register_variable("SCRIPT_NAME",
-            (char*)SG(request_info).path_translated, vars);
+            (char*)context->url.path.web, vars);
+
         php_register_variable("PHP_SELF",
+            (char*)context->url.path.web, vars);
+
+        php_register_variable("REQUEST_URI",
+            (char*)context->url.uri, vars);
+
+        php_register_variable("HTTP_HOST",
+            (char*)context->url.host, vars);
+        php_register_variable("HTTP_PORT",
+            (char*)context->url.port.raw, vars);
+        if (context->url.scheme.kind == EM_URL_HTTPS) {
+            php_register_variable("HTTPS", "on", vars);
+        }
+
+    } else if (SG(request_info).path_translated) {
+        php_register_variable("SCRIPT_FILENAME",
             (char*)SG(request_info).path_translated, vars);
     }
 

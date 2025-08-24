@@ -752,17 +752,17 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
         em_vfs_path_release(to_path);
         return false;
     }
-    
+
     em_vfs_node_t* node = zend_hash_str_find_ptr(
         &from_parent->data.dir.children,
         from_path->filename, strlen(from_path->filename));
-    
+
     if (!node) {
         em_vfs_path_release(from_path);
         em_vfs_path_release(to_path);
         return false;
     }
-    
+
     // Get destination parent (create if needed)
     em_vfs_node_t* to_parent = em_vfs_resolve(to_path, true);
     if (!to_parent || to_parent->kind != EM_VFS_DIR) {
@@ -775,7 +775,7 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
     em_vfs_node_t* existing = zend_hash_str_find_ptr(
         &to_parent->data.dir.children,
         to_path->filename, strlen(to_path->filename));
-    
+
     if (existing) {
         em_vfs_path_release(from_path);
         em_vfs_path_release(to_path);
@@ -793,7 +793,7 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
         em_vfs_node_release(node->parent);
     }
     node->parent = em_vfs_node_copy(to_parent);
-    
+
     // Add to destination parent
     zend_hash_str_add_ptr(
         &to_parent->data.dir.children,
@@ -804,20 +804,22 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
     zend_hash_str_del(
         &from_parent->data.dir.children,
         from_path->filename, strlen(from_path->filename));
-    
+
     // Update modification time if it's a file
     if (node->kind == EM_VFS_FILE) {
         node->data.file.modified = time(NULL);
     }
-    
+
     em_vfs_path_release(from_path);
     em_vfs_path_release(to_path);
-    
+
     return true;
 }
 
 void EMSCRIPTEN_KEEPALIVE
     em_vfs_reset(void) {
         em_vfs_shutdown();
+        php_clear_stat_cache(
+            0, NULL, 0);
         em_vfs_startup();
 }

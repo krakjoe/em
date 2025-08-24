@@ -110,18 +110,6 @@ async function resolveResponse(promise, event) {
     });
 }
 
-function resolveResource(url) {
-    // Always return only URI and query string, stripping host/scheme/etc
-    let urlObj;
-    try {
-        urlObj = new URL(url, self.location.origin);
-    } catch (e) {
-        // If url is not absolute, treat as path
-        urlObj = { pathname: url, search: '' };
-    }
-    return urlObj.pathname + (urlObj.search || '');
-}
-
 self.addEventListener('fetch', async (event) => {
     const url = new URL(event.request.url, self.location.url);
 
@@ -164,9 +152,7 @@ self.addEventListener('fetch', async (event) => {
         console.log(
             `[worker:${uuid}] Intercepting ${event.request.url}`);
 
-        let resourceUrl =
-            resolveResource(event.request.url);
-        let head = `${event.request.method} ${resourceUrl}\r\n`;
+        let head = `${event.request.method} ${event.request.url}\r\n`;
         if (event.request.headers) {
             for (const [key, value] of event.request.headers.entries()) {
                 head += `${key}: ${value}\r\n`;

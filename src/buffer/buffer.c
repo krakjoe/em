@@ -16,7 +16,7 @@
   +----------------------------------------------------------------------+
  */
 
-#include "buffer.h"
+#include <buffer/buffer.h>
 
 #include <stddef.h>
 #include <stdlib.h>

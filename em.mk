@@ -47,6 +47,7 @@ export EM_VFS_DIR    = $(EM_SRC_DIR)/vfs
 export EM_HTTP_DIR   = $(EM_SRC_DIR)/http
 export EM_SRV_DIR    = $(EM_SRC_DIR)/srv
 export EM_MOD_DIR    = $(EM_SRC_DIR)/mod
+export EM_URL_DIR    = $(EM_SRC_DIR)/url
 export EM_API_DIR    = $(EM_SRC_DIR)/api
 export EM_MK_DIR     = $(EM_ROOT_DIR)/mk
 ########################################################################
@@ -59,6 +60,10 @@ export EM_SYS_LDFLAGS = -L$(EM_SYS_DIR) -lsys
 export EM_BUFFER_LIB     =   $(EM_BUFFER_DIR)/libbuffer.a
 export EM_BUFFER_CFLAGS  = -I$(EM_BUFFER_DIR)
 export EM_BUFFER_LDFLAGS = -L$(EM_BUFFER_DIR) -lbuffer
+########################################################################
+export EM_URL_LIB     =   $(EM_URL_DIR)/liburl.a
+export EM_URL_CFLAGS  = -I$(EM_URL_DIR)
+export EM_URL_LDFLAGS = -L$(EM_URL_DIR) -lurl
 ########################################################################
 export EM_VFS_LIB     =   $(EM_VFS_DIR)/libvfs.a
 export EM_VFS_CFLAGS  = -I$(EM_VFS_DIR)
@@ -79,6 +84,15 @@ export EM_API_LDFLAGS = -L$(EM_API_DIR) -lapi
 export EM_MOD_LIB     =   $(EM_MOD_DIR)/libmod.a
 export EM_MOD_CFLAGS  = -I$(EM_MOD_DIR)
 export EM_MOD_LDFLAGS = -L$(EM_MOD_DIR) -lmod
+########################################################################
+export EM_SRC_CFLAGS  = -I$(EM_SRC_DIR)
+export EM_SRC_LDFLAGS = $(EM_BUFFER_LDFLAGS) \
+						$(EM_URL_LDFLAGS)    \
+						$(EM_VFS_LDFLAGS)    \
+						$(EM_HTTP_LDFLAGS)   \
+						$(EM_SRV_LDFLAGS)    \
+						$(EM_API_LDFLAGS)    \
+						$(EM_MOD_LDFLAGS)
 ########################################################################
 # Private, toolchain, not necessary to set any of this
 ########################################################################
@@ -223,8 +237,9 @@ $(EM_PHP_DIR)/config.status: $(EM_PHP_DIR)/config.deps $(EM_RECIPE_TARGETS)
 ###################################################################
 
 $(EM_BUFFER_DIR)/%.o: $(EM_BUFFER_DIR)/%.c $(EM_PHP_DIR)/config.status
-	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-		-c $< -o $@
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
+			-c $< -o $@
 
 EM_BUFFER_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_BUFFER_DIR)/*.c))
 
@@ -233,9 +248,21 @@ $(EM_BUFFER_LIB): $(EM_BUFFER_OBJECTS) $(EM_PHP_DIR)/config.status
 
 ###################################################################
 
+$(EM_URL_DIR)/%.o: $(EM_URL_DIR)/%.c $(EM_PHP_DIR)/config.status
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
+				-c $< -o $@
+
+EM_URL_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_URL_DIR)/*.c))
+
+$(EM_URL_LIB): $(EM_URL_OBJECTS) $(EM_PHP_DIR)/config.status
+	$(AR) rcs $@ $(EM_URL_OBJECTS)
+
+###################################################################
+
 $(EM_VFS_DIR)/%.o: $(EM_VFS_DIR)/%.c $(EM_PHP_DIR)/config.status
-	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-		$(EM_BUFFER_CFLAGS) \
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 EM_VFS_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_VFS_DIR)/*.c))
@@ -246,8 +273,8 @@ $(EM_VFS_LIB): $(EM_VFS_OBJECTS) $(EM_PHP_DIR)/config.status
 ###################################################################
 
 $(EM_HTTP_DIR)/%.o: $(EM_HTTP_DIR)/%.c $(EM_PHP_DIR)/config.status
-	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-		$(EM_BUFFER_CFLAGS) $(EM_VFS_CFLAGS) \
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 EM_HTTP_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_HTTP_DIR)/*.c))
@@ -258,8 +285,8 @@ $(EM_HTTP_LIB): $(EM_HTTP_OBJECTS) $(EM_PHP_DIR)/config.status
 ###################################################################
 
 $(EM_SRV_DIR)/%.o: $(EM_SRV_DIR)/%.c $(EM_PHP_DIR)/config.status
-	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-		$(EM_BUFFER_CFLAGS) $(EM_VFS_CFLAGS) $(EM_API_CFLAGS) \
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 EM_SRV_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_SRV_DIR)/*.c))
@@ -270,8 +297,8 @@ $(EM_SRV_LIB): $(EM_SRV_OBJECTS) $(EM_PHP_DIR)/config.status
 ###################################################################
 
 $(EM_SYS_DIR)/%.o: $(EM_SYS_DIR)/%.c $(EM_PHP_DIR)/config.status
-	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-		$(EM_BUFFER_CFLAGS) $(EM_VFS_CFLAGS) \
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 EM_SYS_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_SYS_DIR)/*.c))
@@ -282,10 +309,8 @@ $(EM_SYS_LIB): $(EM_SYS_OBJECTS) $(EM_PHP_DIR)/config.status
 ###################################################################
 
 $(EM_MOD_DIR)/%.o: $(EM_MOD_DIR)/%.c $(EM_PHP_DIR)/config.status
-	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-		$(EM_BUFFER_CFLAGS) $(EM_VFS_CFLAGS) \
-		$(EM_HTTP_CFLAGS)   $(EM_SRV_CFLAGS) \
-		$(EM_API_CFLAGS) \
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 EM_MOD_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_MOD_DIR)/*.c))
@@ -296,16 +321,15 @@ $(EM_MOD_LIB): $(EM_MOD_OBJECTS) $(EM_PHP_DIR)/config.status
 ###################################################################
 
 $(EM_API_DIR)/%.o: $(EM_API_DIR)/%.c $(EM_PHP_DIR)/config.status
-	$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-		$(EM_BUFFER_CFLAGS) $(EM_VFS_CFLAGS) \
-		$(EM_HTTP_CFLAGS)   $(EM_SRV_CFLAGS) \
-		$(EM_MOD_CFLAGS) \
+	$(CC) $(EM_SRC_CFLAGS) \
+		$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 			-c $< -o $@
 
 EM_API_OBJECTS := $(patsubst %.c,%.o,$(wildcard $(EM_API_DIR)/*.c))
 
 $(EM_API_LIB): \
 	$(EM_BUFFER_LIB) \
+	$(EM_URL_LIB) \
 	$(EM_VFS_LIB) \
 	$(EM_HTTP_LIB) \
 	$(EM_SRV_LIB) \
@@ -316,18 +340,14 @@ $(EM_API_LIB): \
 
 $(EM_RECIPE_BUILD_OBJECTS): %.lo: %.c $(EM_PHP_DIR)/config.status
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-			$(EM_BUFFER_CFLAGS) $(EM_VFS_CFLAGS) \
-			$(EM_HTTP_CFLAGS) $(EM_SRV_CFLAGS) \
-			$(EM_MOD_CFLAGS) $(EM_API_CFLAGS) \
+		$(CC) $(EM_SRC_CFLAGS) \
+			$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 				-c $< -o $@
 
 $(EM_RECIPE_LINK_OBJECTS): %.lo: %.c $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --mode=compile --tag=CC \
-		$(CC) $(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
-			$(EM_BUFFER_CFLAGS) $(EM_VFS_CFLAGS) \
-			$(EM_HTTP_CFLAGS) $(EM_SRV_CFLAGS) \
-			$(EM_MOD_CFLAGS) $(EM_API_CFLAGS) \
+		$(CC) $(EM_SRC_CFLAGS) \
+			$(EM_PHP_CFLAGS) $(EM_RECIPE_CFLAGS) $(EM_EMSDK_CFLAGS) \
 				-c $< -o $@
 
 ###################################################################
@@ -360,6 +380,7 @@ bin: $(EM_API_LIB) $(EM_MOD_LIB) $(EM_RECIPE_LINK_RULES) $(EM_RECIPE_LINK_OBJECT
 		$(EM_PHP_DIR)/.libs/libphp.a \
 		$(EM_SYS_LDFLAGS) \
 		$(EM_BUFFER_LDFLAGS) \
+		$(EM_URL_LDFLAGS) \
 		$(EM_VFS_LDFLAGS) \
 		$(EM_HTTP_LDFLAGS) \
 		$(EM_SRV_LDFLAGS) \
