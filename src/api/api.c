@@ -701,6 +701,9 @@ static void em_sapi_server(zval *vars)
 	php_import_environment_variables(vars);
 
     if (context->url.kind != EM_URL_UNUSED) {
+        php_register_variable("SERVER_NAME",
+            (char*)context->url.host, vars);
+
         php_register_variable("REQUEST_METHOD",
             (char*)SG(request_info).request_method, vars);
 
