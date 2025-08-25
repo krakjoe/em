@@ -21,6 +21,12 @@
 
 #include <emscripten.h>
 
+typedef struct _em_vfs_iterator_t {
+    em_vfs_node_t* node;
+    em_vfs_node_t* current;
+    HashPosition   position;
+} em_vfs_iterator_t;
+
 void* EMSCRIPTEN_KEEPALIVE
     em_vfs_iterator(const char* path);
 ssize_t EMSCRIPTEN_KEEPALIVE

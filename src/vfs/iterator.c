@@ -16,16 +16,10 @@
   +----------------------------------------------------------------------+
  */
 
-#include "vfs.h"
-#include "node.h"
-#include "path.h"
-#include "iterator.h"
-
-typedef struct _em_vfs_iterator_t {
-    em_vfs_node_t* node;
-    em_vfs_node_t* current;
-    HashPosition   position;
-} em_vfs_iterator_t;
+#include <vfs/vfs.h>
+#include <vfs/node.h>
+#include <vfs/path.h>
+#include <vfs/iterator.h>
 
 static zend_always_inline bool em_vfs_iterator_update(em_vfs_iterator_t* iterator) {
     zval* zv =

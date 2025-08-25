@@ -103,7 +103,7 @@ export CXX=em++
 export AR=emar
 export RANLIB=emranlib
 export STRIP=emstrip
-export CFLAGS=-DEMSCRIPTEN -DHAVE_REALLOCARRAY -O2
+export CFLAGS=-DEMSCRIPTEN -DHAVE_REALLOCARRAY -O2 -DPHP_GLOB_BRACE=0
 export EXTRA_LIBS=$(EM_SYS_LDFLAGS)
 ########################################################################
 # Super duper private, probably stuff will break if caller sets these
@@ -232,6 +232,7 @@ $(EM_PHP_DIR)/config.status: $(EM_PHP_DIR)/config.deps $(EM_RECIPE_TARGETS)
 			--enable-embed=static \
 			--disable-fiber-asm \
 			--without-pcre-jit \
+			--enable-system-glob \
 			$(EM_RECIPE_CONFIGURE)
 
 ###################################################################
