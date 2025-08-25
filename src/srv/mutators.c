@@ -199,7 +199,7 @@ bool em_mutators_mutate(em_dispatch_context_t* context) {
 
 void em_mutators_startup(void) {
     const char *href =
-        "(href|src|action|style)\\s*=\\s*[\"']?(?!data:)([^\"'>\\s]+)[\"']?";
+        "(href|src|action|style)\\s*=\\s*[\"']?(?!data:|\\/\\/)([^\"'>\\s]+)[\"']?";
 
     int code;
     PCRE2_SIZE offset;
