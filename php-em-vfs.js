@@ -394,11 +394,11 @@ class EmVfsTool {
     async load() {
         try {
             // Try to find php-em.js in multiple locations
-            const searchPaths = [
+            const searchPaths = !this.options.runtime ? [
                 './php-em.js',           // Current directory
                 '../php-em.js',          // One level up
                 '../dist/php-em.js'      // dist directory
-            ];
+            ] : [ this.options.runtime ];
             
             let emPath = null;
             let emRoot = null;
@@ -459,6 +459,7 @@ Options:
   --in,      -i               Input Path
   --out,     -o               Output Path   
   --strip    -s               Strip Output Path Components
+  --runtime  -r               Path to php-em.js
   --verbose, -v               Be Verbose
   --help,    -h               Show this help
 `);
@@ -480,6 +481,7 @@ if (require.main === module) {
         out:     null,
         strip:   0,
         mode:    null,
+        runtime: null,
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -495,6 +497,8 @@ if (require.main === module) {
             options.out = args[++i];
         } else if (arg === '--strip' || arg === '-s') {
             options.strip = parseInt(args[++i]);
+        } else if (arg === '--runtime' || arg === '-r') {
+            options.runtime = args[++i];
         } else if (arg === '--help' || arg === '-h') {
             help(0);
         } else {

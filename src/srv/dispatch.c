@@ -411,6 +411,7 @@ static em_dispatch_context_t*
         &context->environ, env, elen, false);
 
     if (!em_url_parse(context, initial->value.data, &context->url)) {
+        fprintf(stderr, "[dispatch] could not parse url\n");
         context->handler =
             em_dispatch_exception;
         return context;
@@ -557,12 +558,16 @@ em_dispatch_context_t* em_dispatch_leave(em_dispatch_context_t* context) {
 }
 
 void em_dispatch_error(em_dispatch_context_t* context) {
+    fprintf(stderr,
+        "[dispatch] error for %p\n", context);
     em_dispatch_header(context, "Status: 400 Not Found");
     em_dispatch_header(context, "Content-Type: text/plain");
     em_dispatch_nocache(context);
 }
 
 void em_dispatch_exception(em_dispatch_context_t* context) {
+    fprintf(stderr,
+        "[dispatch] exception for %p\n", context);
     em_dispatch_header(context, "Status: 500 Internal Server Error");
     em_dispatch_header(context, "Content-Type: text/plain");
     em_dispatch_nocache(context);

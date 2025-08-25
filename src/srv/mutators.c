@@ -123,7 +123,9 @@ static bool em_mutators_html(em_dispatch_context_t* context) {
             ovector[5] - ovector[4]);
         attr_value[ovector[5] - ovector[4]] = '\0';
 
-        if (strcasecmp(attr_name, "href") == 0 || strcasecmp(attr_name, "src") == 0) {
+        if (strcasecmp(attr_name, "href")   == 0 ||
+            strcasecmp(attr_name, "src")    == 0 ||
+            strcasecmp(attr_name, "action") == 0) {
             char *mutated = em_mutators_href(context, attr_value, ovector[5] - ovector[4]);
             if (mutated) {
                 smart_str_appends(&new_content, attr_name);
@@ -197,7 +199,7 @@ bool em_mutators_mutate(em_dispatch_context_t* context) {
 
 void em_mutators_startup(void) {
     const char *href =
-        "\\b(href|src|action|style)\\s*=\\s*[\"']?(?!data:)([^\"'>\\s]+)[\"']?";              // fragment (optional, after #)
+        "(href|src|action|style)\\s*=\\s*[\"']?(?!data:)([^\"'>\\s]+)[\"']?";
 
     int code;
     PCRE2_SIZE offset;

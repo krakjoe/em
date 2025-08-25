@@ -31,7 +31,7 @@ EM_LIBXML_MADE        = $(EM_LIBXML_SRC)/libxml2.a
 ########################################################################
 all-libxml: install-libxml
 
-$(EM_LIBXML_TAR): $$(EM_ZLIB_LIB)
+$(EM_LIBXML_TAR): $$(EM_ZLIB_LIB) $$(EM_ICONV_LIB)
 	wget $(EM_LIBXML_URL) -O $(EM_LIBXML_TAR)
 	mkdir -p $(EM_LIBXML_SRC)
 	tar -C $(EM_LIBXML_SRC) --strip-components=1 -xvf \
@@ -46,7 +46,7 @@ $(EM_LIBXML_CONFIGURED): $(EM_LIBXML_TAR)
 			--enable-static \
 			--with-reader \
 			--with-writer \
-			--without-iconv \
+			--with-iconv=$(EM_ICONV_SRC) \
 			--without-icu \
 			--without-python \
 			--with-zlib=$(EM_ZLIB_SRC) \
@@ -78,6 +78,8 @@ $(eval $(call EM_RECIPE_ADD_LIB,       $(EM_LIBXML_LIB)))
 $(eval $(call EM_RECIPE_ADD_CLEANER,   clean-libxml))
 $(eval $(call EM_RECIPE_ADD_DEP,       libxml, EM_ZLIB_SRC))
 $(eval $(call EM_RECIPE_ADD_DEP,       libxml, EM_ZLIB_LIB))
+$(eval $(call EM_RECIPE_ADD_DEP,       libxml, EM_ICONV_SRC))
+$(eval $(call EM_RECIPE_ADD_DEP,       libxml, EM_ICONV_LIB))
 ########################################################################
 # Export for php
 ########################################################################
@@ -86,3 +88,6 @@ export LIBXML_CFLAGS     = -I$(EM_LIBXML_INC)
 
 export Z_LIBS            = $(EM_ZLIB_LIB)
 export Z_CFLAGS          = -I$(EM_ZLIB_SRC)
+
+export ICONV_LIBS        = $(EM_ICONV_LIB)
+export ICONV_CFLAGS      = -I$(EM_ICONV_CFLAGS)
