@@ -43,7 +43,7 @@ static zend_always_inline bool em_vfs_iterator_update(em_vfs_iterator_t* iterato
 void* EMSCRIPTEN_KEEPALIVE
     em_vfs_iterator(const char* path) {
     em_vfs_path_t* vpath =
-        em_vfs_mkpath(path);
+        em_vfs_mkpath(path, true);
     em_vfs_node_t* node =
         em_vfs_resolve(vpath, false);
     em_vfs_path_release(vpath);

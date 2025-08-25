@@ -120,7 +120,7 @@ char* em_sqlite_path(const char* zPath) {
         pPath += sizeof("vfs:")-1;
     }
 
-    em_vfs_path_t* vpath = em_vfs_mkpath(pPath);
+    em_vfs_path_t* vpath = em_vfs_mkpath(pPath, false);
 
     if (!vpath->directory && vpath->filename) {
         asprintf(&vresult,

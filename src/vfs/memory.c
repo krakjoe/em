@@ -442,7 +442,8 @@ static uintptr_t em_vfs_memory_export(em_vfs_node_t* node, em_vfs_memory_header_
  */
 uintptr_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_alloc(const char* path) {
     em_vfs_path_t* vpath =
-        em_vfs_mkpath(path ? path : "/");
+        em_vfs_mkpath(
+            path ? path : "/", true);
     em_vfs_node_t* node =
         em_vfs_resolve(vpath, false);
     em_vfs_path_release(vpath);

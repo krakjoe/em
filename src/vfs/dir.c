@@ -134,7 +134,7 @@ php_stream* em_vfs_wrapper_opendir(
     zend_string **opened_path,
     php_stream_context* context STREAMS_DC) {
     
-    em_vfs_path_t* vpath = em_vfs_mkpath(filename);
+    em_vfs_path_t* vpath = em_vfs_mkpath(filename, true);
     if (!vpath) {
         return NULL;
     }

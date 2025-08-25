@@ -396,7 +396,7 @@ static php_stream_ops em_vfs_ops = {
 em_vfs_abstract_t* em_vfs_open(
     const char* path,
     const char* mode) {
-    em_vfs_path_t* vpath = em_vfs_mkpath(path);
+    em_vfs_path_t* vpath = em_vfs_mkpath(path, false);
 
     if (!vpath) {
         return NULL;
@@ -452,7 +452,7 @@ static int em_vfs_wrapper_stat_uri(
     const char *uri, int flags,
     php_stream_statbuf *ssb,
     php_stream_context *context) {
-    em_vfs_path_t* vpath = em_vfs_mkpath(uri);
+    em_vfs_path_t* vpath = em_vfs_mkpath(uri, false);
     if (!vpath) {
         return FAILURE;
     }
@@ -561,7 +561,7 @@ void em_vfs_shutdown(void) {
 
 bool EMSCRIPTEN_KEEPALIVE
     em_vfs_put(const char* path, const char* data, size_t length) {
-    em_vfs_path_t* vpath = em_vfs_mkpath(path);
+    em_vfs_path_t* vpath = em_vfs_mkpath(path, false);
 
     if (!vpath) {
         return NULL;
@@ -590,7 +590,7 @@ bool EMSCRIPTEN_KEEPALIVE
 
 void* EMSCRIPTEN_KEEPALIVE
     em_vfs_get_address(const char* path) {
-    em_vfs_path_t* vpath = em_vfs_mkpath(path);
+    em_vfs_path_t* vpath = em_vfs_mkpath(path, false);
 
     if (!vpath) {
         return NULL;
@@ -623,7 +623,7 @@ void* EMSCRIPTEN_KEEPALIVE
 
 ssize_t EMSCRIPTEN_KEEPALIVE
     em_vfs_get_length(const char* path) {
-        em_vfs_path_t* vpath = em_vfs_mkpath(path);
+        em_vfs_path_t* vpath = em_vfs_mkpath(path, false);
 
     if (!vpath) {
         return -1;
@@ -656,7 +656,7 @@ ssize_t EMSCRIPTEN_KEEPALIVE
 
 bool EMSCRIPTEN_KEEPALIVE em_vfs_unlink(const char* path, bool directories) {
     // Parse the path
-    em_vfs_path_t* vpath = em_vfs_mkpath(path);
+    em_vfs_path_t* vpath = em_vfs_mkpath(path, false);
     if (!vpath) {
         return 0;
     }
@@ -710,7 +710,7 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_unlink(const char* path, bool directories) {
 bool EMSCRIPTEN_KEEPALIVE
     em_vfs_mkdir(const char* path) {
     em_vfs_path_t* vpath =
-        em_vfs_mkpath(path);
+        em_vfs_mkpath(path, true);
 
     if (!vpath) {
         return false;
@@ -728,8 +728,8 @@ bool EMSCRIPTEN_KEEPALIVE
 }
 
 bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
-    em_vfs_path_t* from_path = em_vfs_mkpath(from);
-    em_vfs_path_t* to_path = em_vfs_mkpath(to);
+    em_vfs_path_t* from_path = em_vfs_mkpath(from, false);
+    em_vfs_path_t* to_path = em_vfs_mkpath(to, false);
 
     if (!from_path || !to_path) {
         if (from_path) em_vfs_path_release(from_path);

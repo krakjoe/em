@@ -27,7 +27,7 @@ typedef struct _em_vfs_path_t {
     bool is_root;       // True if directory is root
 } em_vfs_path_t;
 
-em_vfs_path_t* em_vfs_mkpath(const char* path);
+em_vfs_path_t* em_vfs_mkpath(const char* path, bool directory);
 void em_vfs_path_release(em_vfs_path_t* vpath);
 #endif
 

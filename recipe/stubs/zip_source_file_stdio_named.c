@@ -227,7 +227,7 @@ _em_zip_op_stat(zip_source_file_context_t *ctx, zip_source_file_stat_t *st) {
     }
 
     php_stream_statbuf ssb;
-    em_vfs_path_t* vpath = em_vfs_mkpath(ctx->fname);
+    em_vfs_path_t* vpath = em_vfs_mkpath(ctx->fname, false);
 
     if (em_vfs_stat_path(
             vpath, &ssb, true) == FAILURE) {

@@ -22,7 +22,7 @@
  */
 int lstat(const char *restrict path, struct stat *restrict buf) {
     em_vfs_path_t* vpath =
-        em_vfs_mkpath(path);
+        em_vfs_mkpath(path, false);
     
     php_stream_statbuf ssb;
     if (em_vfs_stat_path(

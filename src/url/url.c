@@ -168,9 +168,13 @@ static void em_url_parse_complete(em_dispatch_context_t* context, em_url_t* pars
     }
 
     if (!parsed->port.raw) {
-        parsed->port.raw =
-            strdup("80");
+        if (parsed->scheme.kind == EM_URL_HTTPS) {
+            parsed->port.raw = strdup("443");
+        } else {
+            parsed->port.raw = strdup("80");
+        }
     }
+
     parsed->port.number =
         atol(parsed->port.raw);
 

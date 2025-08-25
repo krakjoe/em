@@ -18,7 +18,7 @@
 
 #include "path.h"
 
-char* em_vfs_path_normalize(const char *path) {
+static char* em_vfs_path_normalize(const char *path, bool directory) {
     // Strip vfs:// prefix if present
     const char *input =
         (strncmp(path, "vfs://", 6) == 0) ?
@@ -57,7 +57,7 @@ char* em_vfs_path_normalize(const char *path) {
             strcat(normalized, segments[i]);
         }
         // Preserve trailing slash if original had one
-        if (has_trailing_slash) {
+        if (directory || has_trailing_slash) {
             strcat(normalized, "/");
         }
     }
@@ -66,7 +66,7 @@ char* em_vfs_path_normalize(const char *path) {
     return normalized;
 }
 
-em_vfs_path_t* em_vfs_mkpath(const char* path) {
+em_vfs_path_t* em_vfs_mkpath(const char* path, bool directory) {
     if (!path) {
         return NULL;
     }
@@ -76,7 +76,7 @@ em_vfs_path_t* em_vfs_mkpath(const char* path) {
     // Store normalized path
     char* normalized =
         vpath->original =
-            em_vfs_path_normalize(path);
+            em_vfs_path_normalize(path, directory);
 
     // Find last slash
     char* last_slash = strrchr(normalized, '/');
