@@ -90,4 +90,4 @@ export Z_LIBS            = $(EM_ZLIB_LIB)
 export Z_CFLAGS          = -I$(EM_ZLIB_SRC)
 
 export ICONV_LIBS        = $(EM_ICONV_LIB)
-export ICONV_CFLAGS      = -I$(EM_ICONV_CFLAGS)
+export ICONV_CFLAGS      = -I$(EM_ICONV_SRC)
