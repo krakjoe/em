@@ -25,7 +25,7 @@
 
 static pcre2_code* __em_mutators_html_pattern__;
 
-sapi_header_struct* em_mutators_header(em_dispatch_context_t* context, const char* search) {
+char* em_mutators_header(em_dispatch_context_t* context, const char* search) {
     zend_llist_position position;
     sapi_header_struct* find = zend_llist_get_first_ex(&SG(sapi_headers).headers, &position);
 
@@ -35,18 +35,33 @@ sapi_header_struct* em_mutators_header(em_dispatch_context_t* context, const cha
 
     do {
         if (strcasestr(find->header, search)) {
-            return find;
+            char* start = strchr(find->header, ':');
+
+            if (!start) {
+                return NULL;
+            }
+            start++;
+
+            while (isspace(*start)) {
+                start++;
+            }
+
+            return start;
         }
     } while ((find = zend_llist_get_next_ex(&SG(sapi_headers).headers, &position)));
 
     return NULL;
 }
 
-sapi_header_struct* em_mutators_typeof(em_dispatch_context_t* context) {
+char* em_mutators_location(em_dispatch_context_t* context) {
+    return em_mutators_header(context, "location");
+}
+
+char* em_mutators_typeof(em_dispatch_context_t* context) {
     return em_mutators_header(context, "content-type");
 }
 
-sapi_header_struct* em_mutators_sizeof(em_dispatch_context_t* context) {
+char* em_mutators_sizeof(em_dispatch_context_t* context) {
     return em_mutators_header(context, "content-length");
 }
 
@@ -181,16 +196,53 @@ static bool em_mutators_css(em_dispatch_context_t* context) {
     return false;
 }
 
+static void em_mutators_redirect(
+    em_dispatch_context_t* context,
+    char* location) {
+    em_url_t redirect;
+
+    if (!em_url_parse(context, location, &redirect)) {
+        return;
+    }
+
+    if (!em_url_compare(
+            EM_URL_COMPARE_ORIGIN,
+            &context->url, &redirect)) {
+        em_url_free(&redirect);
+        return;
+    }
+
+    char* value = em_url_string(EM_URL_REL, &redirect);
+
+    if (value) {
+        em_dispatch_header(context,
+            "Location: %s", value);
+        free(value);
+    }
+
+    em_url_free(&redirect);
+}
+
+static void em_mutators_headers(em_dispatch_context_t* context) {
+    char* location =
+        em_mutators_location(context);
+    if (location) {
+        em_mutators_redirect(context, location);
+    }
+}
+
 bool em_mutators_mutate(em_dispatch_context_t* context) {
-    sapi_header_struct* type = em_mutators_typeof(context);
+    em_mutators_headers(context);
+
+    char* type = em_mutators_typeof(context);
 
     if (!type) {
         return false;
     }
 
-    if (strcasestr(type->header, "text/html")) {
+    if (strcasestr(type, "text/html")) {
         return em_mutators_html(context);
-    } else if (strcasestr(type->header, "text/css")) {
+    } else if (strcasestr(type, "text/css")) {
         return em_mutators_css(context);
     }
 
@@ -198,19 +250,23 @@ bool em_mutators_mutate(em_dispatch_context_t* context) {
 }
 
 void em_mutators_startup(void) {
-    const char *href =
-        "(href|src|action|style)\\s*=\\s*[\"']?(?!data:|\\/\\/)([^\"'>\\s]+)[\"']?";
+    PCRE2_SPTR href = (PCRE2_SPTR)
+        "(href|src|action|style)"
+        "\\s*="
+        "\\s*[\"']?"
+        "(?!data:|\\/\\/)"
+        "([^\"'>\\s]+)"
+        "[\"']?";
 
     int code;
     PCRE2_SIZE offset;
 
-    __em_mutators_html_pattern__ = pcre2_compile(
-        (PCRE2_SPTR)href,
-                    strlen(href),
-                    PCRE2_CASELESS | PCRE2_DOTALL,
-                    &code,
-                    &offset,
-                    NULL);
+    __em_mutators_html_pattern__ =
+        pcre2_compile(
+            href, strlen((char*)href),
+            PCRE2_CASELESS | PCRE2_DOTALL,
+            &code, &offset,
+            NULL);
 
     if (!__em_mutators_html_pattern__) {
         fprintf(stderr,

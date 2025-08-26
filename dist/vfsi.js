@@ -84,7 +84,8 @@ const VFSManager = {
                          record++) {
                     updateProgressBar(
                         `Writing Record ` +
-                        `${record}/${memory.header.size.records}`);
+                        `${record}/${memory.header.size.records}`,
+                        record, memory.header.size.records);
                     await writer.write(record, 1);
                 }
             } catch (error) {

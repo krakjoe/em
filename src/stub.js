@@ -1397,19 +1397,37 @@ Module.vfs = {
             }
 
             try {
-                const data  = await this.fs.readFile(this.path);
-                const memory =
-                    new Module.vfs.Memory(data);
-                await memory.load();
+                const data  =
+                    await this.fs.readFile(this.path);
+                this.memory = new Module.vfs.Memory(data);
+                await this.memory.load();
                 const writer = 
-                        new Module.vfs.Writer(memory);
-                await writer.write();
+                        new Module.vfs.Writer(this.memory);
+                Module.disableEvent("vfs.modified");
+                for (let record = 0;
+                         record < this.memory.header.size.records;
+                         record++) {
+                    requestIdleCallback(async() => {
+                        await writer.write(record, 1);
+                    });
+                }
             } catch (error) {
                 console.warn(
                     `Persistence cannot read ${this.path} for restoration`, error);
             } finally {
                 try {
-                    memory.free();
+                    requestIdleCallback(async() => {
+                        Module.enableEvent("vfs.modified");
+                        Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+                            detail: {
+                                "method": "write",
+                                "memory": this.memory,
+                                "paths":  []
+                            }
+                        }));
+                        this.memory.free();
+                        this.memory = null;
+                    });
                 } catch (e) {}
             }
         }
@@ -1503,6 +1521,27 @@ Module.vfs = {
     }
 };
 
+/**
+ * Shall contain disabled events
+ */
+Module.disabled = {};
+
+/**
+ * Shall disable an event, must be explicitly enabled before it will fire
+ * @param {string} type
+ */
+Module.disableEvent = (type) =>
+    Module.disabled[type] = true;
+/**
+ * Shall disable an event
+ * @param {string} type
+ */
+Module.enableEvent  = (type) =>
+    Module.disabled[type] = false;
+
+/**
+ * Shall initialize the runtime
+ */
 Module['onRuntimeInitialized'] = function() {
     Module.startup();
 
@@ -1518,16 +1557,26 @@ Module['onRuntimeInitialized'] = function() {
         try {
             const EventEmitter = require('events');
             Module.events = new EventEmitter();
-            Module.addEventListener =    (type, fn) =>
+            Module.addEventListener =    (type, fn) => {
+                if (!type in Module.disabled)
+                    Module.disabled[type] = false;
                 Module.events.on(type, fn);
+            };
             Module.removeEventListener = (type, fn) =>
                 Module.events.off(type, fn);
-            Module.dispatchEvent =       (event)    =>
+            Module.dispatchEvent =       (event)    => {
+                if (Module.disabled[event.type]) {
+                    return;
+                }
                 Module.events.emit(event.type, event);
+            };
         } catch (e) {
             Module.events = {};
             Module.addEventListener = (type, fn) => {
-                if (!Module.events[type]) Module.events[type] = [];
+                if (!Module.events[type])
+                    Module.events[type] = [];
+                if (!type in Module.disabled)
+                    Module.disabled[type] = false;
                 Module.events[type].push(fn);
             };
             Module.removeEventListener = (type, fn) => {
@@ -1539,8 +1588,13 @@ Module['onRuntimeInitialized'] = function() {
                 }
             };
             Module.dispatchEvent = (event) => {
+                if (Module.disabled[event.type]) {
+                    return;
+                }
+
                 if (Module.events[event.type]) {
-                    Module.events[event.type].forEach(fn => fn(event));
+                    Module.events[event.type]
+                        .forEach(fn => fn(event));
                 }
             };
         }
@@ -1548,12 +1602,20 @@ Module['onRuntimeInitialized'] = function() {
     }
 
     Module.events = new EventTarget();
-    Module.addEventListener = (type, fn) =>
+    Module.addEventListener = (type, fn) => {
+        if (!type in Module.disabled) {
+            Module.disabled[type] = false;
+        }
         Module.events.addEventListener(type, fn);
+    };
     Module.removeEventListener = (type, fn) =>
         Module.events.removeEventListener(type, fn);
-    Module.dispatchEvent = (event) =>
+    Module.dispatchEvent = (event) => {
+        if (Module.disabled[event.type]) {
+            return;
+        }
         Module.events.dispatchEvent(event);
+    };
 
     (async () => {
         Module.persistence =
