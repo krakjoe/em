@@ -308,8 +308,6 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     zend_signal_startup();
 
     em_vfs_startup();
-    em_vfs_mkdir(
-        "/.opcache/");
 
     sapi_startup(&em_sapi_module);
 
