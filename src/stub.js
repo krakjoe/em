@@ -1286,22 +1286,13 @@ Module.vfs = {
      * Shall provide persistence for the vfs
      */
     Persistence: class {
-        hasFilesystem() {
-            return Module.node || Module.electron ||
-                   ('storage' in navigator &&
-                        'getDirectory' in navigator.storage) ||
-                   ('indexedDB' in window);
-        }
+        constructor(path = "em.vfsi", tick = 1000) {
+            this.path = path;
+            this.tick = tick;
 
-        enable = async (tick = 1000, path = "em.vfs") => {
             if (!this.hasFilesystem()) {
-                console.warn(
-                    "Persistence is not available in this environment");
-                return false;
+                return;
             }
-
-            this.tick      = tick;
-            this.path      = path;
 
             if (Module.electron) {
                 this.fs = window.nodeFS;
@@ -1391,9 +1382,59 @@ Module.vfs = {
                     }
                 };
             }
+        }
 
-            await this.onEnable();
+        hasFilesystem() {
+            return Module.node || Module.electron ||
+                   ('storage' in navigator &&
+                        'getDirectory' in navigator.storage) ||
+                   ('indexedDB' in window);
+        }
+
+        restore = async() => {
+            if (!this.hasFilesystem()) {
+                return;
+            }
+
+            try {
+                const data  = await this.fs.readFile(this.path);
+                const memory =
+                    new Module.vfs.Memory(data);
+                await memory.load();
+                const writer = 
+                        new Module.vfs.Writer(memory);
+                await writer.write();
+            } catch (error) {
+                console.warn(
+                    `Persistence cannot read ${this.path} for restoration`, error);
+            } finally {
+                try {
+                    memory.free();
+                } catch (e) {}
+            }
+        }
+
+        enable() {
+            if (!this.hasFilesystem()) {
+                console.warn(
+                    "Persistence is not available in this environment");
+                return false;
+            }
+
+            Module.addEventListener(
+                "vfs.modified",
+                this.onModified);
+            this.ticking = setTimeout(
+                this.onTick, this.tick);
             return true;
+        }
+
+        disable() {
+            clearTimeout(this.ticking);
+            Module.removeEventListener(
+                "vfs.modified",
+                this.onModified);
+            this.ticking = null;
         }
 
         onModified = (event) => {
@@ -1416,13 +1457,11 @@ Module.vfs = {
         }
 
         onDirty = async () => {
-            if (this.running) {
-                return;
-            }
-
-            this.running = true;
             try {
-                 this.memory =
+                /* stop ticking while we work */
+                this.disable();
+
+                this.memory =
                     new Module.vfs.Memory();
                 await this.memory.load();
 
@@ -1435,70 +1474,29 @@ Module.vfs = {
                 await this.fs.writeFile(this.path, buffer);
             } catch (error) {
                 console.error(
-                    'persistence failed', error);
+                    `Persistence failed to update ${this.path}`,
+                    error);
             } finally {
                 /** cleanup gracefully **/
                 try {
-                    this.memory.free();
-                } catch (e) {}
-
-                this.memory = null;
+                    if (this.memory) {
+                        this.memory.free();
+                    }
+                } catch (e) {} finally {
+                    this.memory = null;
+                }
 
                 /* prevent premature re-entry */
-                this.dirty = 0;
-                this.running = false;
+                this.dirty = false;
+
+                /* start ticking */
+                this.enable();
             }
         }
 
-        onEnable = async () => {
-            if (this.running) {
-                return;
-            }
-
-            this.running = true;
-            try {
-                const data  = await this.fs.readFile(this.path);
-                const memory =
-                    new Module.vfs.Memory(data);
-                try {
-                    await memory.load();
-                    const writer = 
-                            new Module.vfs.Writer(memory);
-                    await writer.write();
-                } finally {
-                    memory.free();
-                }
-            } catch (error) {
-                console.warn(
-                    'persistence cant read disk', error);
-            } finally {
-                this.running = false;
-            }
-            Module.addEventListener(
-                "vfs.modified",
-                this.onModified);
-            this.ticking = setTimeout(
-                this.onTick, this.tick);
-        }
-
-        onDisable = () => {
-            clearTimeout(this.ticking);
-            Module.removeEventListener(
-                "vfs.modified",
-                this.onModified);
-            this.tick    = 0;
-            this.path    = null;
-            this.fs      = null;
-            this.ticking = null;
-        }
-
-        disable() {
-            this.onDisable();
-        }
-
+        path    = null;
         tick    = 0;
         ticking = null;
-        path    = null;
         memory  = null;
         running = false;
         dirty   = false;
@@ -1548,6 +1546,7 @@ Module['onRuntimeInitialized'] = function() {
         }
         return;
     }
+
     Module.events = new EventTarget();
     Module.addEventListener = (type, fn) =>
         Module.events.addEventListener(type, fn);
@@ -1559,6 +1558,7 @@ Module['onRuntimeInitialized'] = function() {
     (async () => {
         Module.persistence =
             new Module.vfs.Persistence();
-        await Module.persistence.enable()
+        await Module.persistence.restore();
+        Module.persistence.enable();
     }) ();
 };

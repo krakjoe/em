@@ -58,18 +58,16 @@ em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
         return em_vfs;
     }
 
-    const char* cleaned = vpath->directory;
-    if (cleaned[0] == '/') {
-        cleaned++;
-    }
-
-    char* scanning = estrdup(cleaned);
+    char* scanning = strdup(
+        vpath->directory[0] == '/' ?
+            &vpath->directory[1] :
+            &vpath->directory[0]);
     char* token = strtok(scanning, "/");
 
     em_vfs_node_t* current = em_vfs;
     while (token && current) {
         if (current->kind != EM_VFS_DIR) {
-            efree(scanning);
+            free(scanning);
             return NULL;
         }
 
@@ -87,7 +85,7 @@ em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
         token = strtok(NULL, "/");
     }
  
-    efree(scanning);
+    free(scanning);
     return current;
 }
 
@@ -141,8 +139,8 @@ ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstract_t* 
         if (node && node->kind == EM_VFS_FILE) {
             abstract->node = em_vfs_node_copy(node);
             abstract->maximum = node->data.file.size;
-            abstract->data = pecalloc(
-                sizeof(char), abstract->maximum, 1);
+            abstract->data = calloc(
+                sizeof(char), abstract->maximum);
             memcpy(abstract->data,
                 node->data.file.content,
                 node->data.file.size);
@@ -171,14 +169,14 @@ ssize_t em_vfs_mount(em_vfs_path_t* vpath, const char* mode, em_vfs_abstract_t* 
             abstract->maximum =
                 node->data.file.size > 8192 ?
                     node->data.file.size : 8192;
-            abstract->data = pecalloc(sizeof(char), abstract->maximum, 1);
+            abstract->data = calloc(abstract->maximum, sizeof(char));
             memcpy(abstract->data,
                    node->data.file.content,
                    node->data.file.size);
             abstract->length = node->data.file.size;
         } else {
             abstract->maximum = 8192;
-            abstract->data = pecalloc(sizeof(char), abstract->maximum, 1);
+            abstract->data = calloc(abstract->maximum, sizeof(char));
             abstract->length = 0;
         }
         return SUCCESS;
@@ -208,7 +206,7 @@ ssize_t em_vfs_truncate(em_vfs_abstract_t* abstract, size_t count) {
         while (maximum < count) {
             maximum *= 2;
         }
-        abstract->data = perealloc(abstract->data, maximum, 1);
+        abstract->data = realloc(abstract->data, maximum);
         abstract->maximum = maximum;
     }
     memset(abstract->data + abstract->length, 0, count - abstract->length);
@@ -222,8 +220,8 @@ ssize_t em_vfs_write_offset(em_vfs_abstract_t* abstract, const char* buffer, siz
         while (maximum < (offset + count)) {
             maximum *= 2;  // Double the buffer size
         }
-        abstract->data = perealloc(
-            abstract->data, maximum, 1);
+        abstract->data = realloc(
+            abstract->data, maximum);
         abstract->maximum = maximum;
     }
 
@@ -283,10 +281,10 @@ void em_vfs_release(em_vfs_abstract_t* abstract) {
     em_vfs_node_release(abstract->node);
 
     if (abstract->data) {
-        pefree(abstract->data, 1);
+        free(abstract->data);
     }
 
-    pefree(abstract, 1);
+    free(abstract);
 }
 
 void em_vfs_close(em_vfs_abstract_t* abstract, bool sync) {
@@ -295,7 +293,7 @@ void em_vfs_close(em_vfs_abstract_t* abstract, bool sync) {
         abstract->node->kind == EM_VFS_FILE) {
         // Free old content
         if (abstract->node->data.file.content) {
-            pefree(abstract->node->data.file.content, 1);
+            free(abstract->node->data.file.content);
         }
 
         // Save new content
@@ -306,8 +304,8 @@ void em_vfs_close(em_vfs_abstract_t* abstract, bool sync) {
         if (sync) {
             // Perform sync
             abstract->length   = abstract->node->data.file.size;
-            abstract->data     = pecalloc(
-                sizeof(char), abstract->length, 1);
+            abstract->data     = calloc(
+                abstract->length, sizeof(char));
             memcpy(abstract->data,
                 abstract->node->data.file.content,
                 abstract->length);
@@ -402,7 +400,7 @@ em_vfs_abstract_t* em_vfs_open(
         return NULL;
     }
 
-    em_vfs_abstract_t* abstract = pecalloc(1, sizeof(em_vfs_abstract_t), 1);
+    em_vfs_abstract_t* abstract = calloc(sizeof(em_vfs_abstract_t), 1);
 
     if (em_vfs_mount(
             vpath, mode, abstract) < 0) {
@@ -524,7 +522,7 @@ php_stream_wrapper em_vfs_wrapper = {
 };
 
 void em_vfs_startup(void) {
-    em_vfs = pecalloc(1, sizeof(em_vfs_node_t), 1);
+    em_vfs = calloc(sizeof(em_vfs_node_t), 1);
     em_vfs->kind = EM_VFS_DIR;
     em_vfs->name = pestrdup("/", 1);
     em_vfs->parent = NULL;
@@ -536,6 +534,7 @@ void em_vfs_startup(void) {
 #ifdef HAVE_EM_SQLITE_VFS
     em_sqlite_vfs_register();
 #endif
+    em_vfs_path_startup();
 }
 
 void em_vfs_activate(void) {
@@ -557,6 +556,7 @@ void em_vfs_shutdown(void) {
 #endif
 
     em_vfs_node_release(em_vfs);
+    em_vfs_path_shutdown();
 }
 
 bool EMSCRIPTEN_KEEPALIVE
@@ -567,7 +567,7 @@ bool EMSCRIPTEN_KEEPALIVE
         return NULL;
     }
 
-    em_vfs_abstract_t* abstract = pecalloc(1, sizeof(em_vfs_abstract_t), 1);
+    em_vfs_abstract_t* abstract = calloc(1, sizeof(em_vfs_abstract_t));
 
     if (em_vfs_mount(
             vpath, "w", abstract) < 0) {
@@ -784,9 +784,9 @@ bool EMSCRIPTEN_KEEPALIVE em_vfs_move(const char* from, const char* to) {
 
     // Update the node's name and parent
     if (node->name) {
-        pefree(node->name, 1);
+        free(node->name);
     }
-    node->name = pestrdup(to_path->filename, 1);
+    node->name = strdup(to_path->filename);
 
     // Update parent reference
     if (node->parent) {

@@ -110,7 +110,7 @@ static int em_vfs_dir_rewind(php_stream* stream, zend_off_t offset, int whence, 
     if (position) {
         *position = 0;
     }
-    
+
     return SUCCESS;
 }
 

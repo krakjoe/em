@@ -61,18 +61,32 @@ const VFSManager = {
 
         try {
             Module.persistence.disable();
+            Module.removeEventListener(
+                    "vfs.modified", refreshFileTree);
+
+            showProgressBar(`Uploading VFSI ${file}`, 100);
 
             const arrayBuffer = await file.arrayBuffer();
             const image = new Uint8Array(arrayBuffer);
             const memory =
-                new Module.vfs.Memory(image);
-
-            await memory.load();
-
-            const writer = new Module.vfs.Writer(memory);
+                    new Module.vfs.Memory(image);
 
             try {
-                await writer.write();
+                await memory.load();
+
+                showProgressBar(`Writing Records from ${file}`,
+                        memory.header.size.records);
+
+                const writer = new Module.vfs.Writer(memory);
+
+                for (let record = 0;
+                         record < memory.header.size.records;
+                         record++) {
+                    updateProgressBar(
+                        `Writing Record ` +
+                        `${record}/${memory.header.size.records}`);
+                    await writer.write(record, 1);
+                }
             } catch (error) {
                 return {
                     success: false,
@@ -98,8 +112,12 @@ const VFSManager = {
                 message: `Failed to import VFS image: ${error.message}`
             };
         } finally {
+            Module.addEventListener(
+                "vfs.modified", refreshFileTree);
+            Module.persistence.dirty = true;
             Module.persistence.enable();
-            Module.persistence.onDirty();
+            hideProgressBar();
+            refreshFileTree();
         }
     }
 };

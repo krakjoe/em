@@ -307,6 +307,10 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 
     zend_signal_startup();
 
+    em_vfs_startup();
+    em_vfs_mkdir(
+        "/.opcache/");
+
     sapi_startup(&em_sapi_module);
 
     em_sapi_module.ini_entries =
@@ -321,7 +325,7 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
   		return FAILURE;
   	}
 
-    SG(options)                |= SAPI_OPTION_NO_CHDIR;
+    SG(options) |= SAPI_OPTION_NO_CHDIR;
 
     zend_log_func   = sapi_module.log_message;
     zend_write_func = sapi_module.ub_write;
@@ -335,8 +339,7 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
     em_stdxx_startup();
     em_dispatch_startup();
     em_http_startup();
-    em_vfs_startup();
-    
+
     php_import_environment_variables = em_dispatch_env_import;
 
     zend_compile_func = zend_compile_file;
@@ -442,7 +445,6 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
     em_stdxx_shutdown();
     em_dispatch_shutdown();
     em_http_shutdown();
-    em_vfs_shutdown();
     em_mutators_shutdown();
     em_url_shutdown();
 
@@ -452,6 +454,8 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
     php_module_shutdown();
 
     sapi_shutdown();
+
+    em_vfs_shutdown();
 
 #ifdef ZTS
     tsrm_shutdown();

@@ -47,9 +47,9 @@ zend_result em_vfs_node_stat(em_vfs_node_t* node, php_stream_statbuf *ssb, bool 
 }
 
 em_vfs_node_t* em_vfs_node_mkfile(em_vfs_node_t* parent, const char* name) {
-    em_vfs_node_t* file = pecalloc(1, sizeof(em_vfs_node_t), 1);
+    em_vfs_node_t* file = calloc(1, sizeof(em_vfs_node_t));
     file->kind = EM_VFS_FILE;
-    file->name = pestrdup(name, 1);
+    file->name = strdup(name);
     file->parent = em_vfs_node_copy(parent);
     file->data.file.created  = time(NULL);
     file->data.file.modified = time(NULL);
@@ -63,9 +63,9 @@ em_vfs_node_t* em_vfs_node_mkfile(em_vfs_node_t* parent, const char* name) {
 }
 
 em_vfs_node_t* em_vfs_node_mkdir(em_vfs_node_t* parent, const char* name) {
-    em_vfs_node_t* dir = pecalloc(1, sizeof(em_vfs_node_t), 1);
+    em_vfs_node_t* dir = calloc(1, sizeof(em_vfs_node_t));
     dir->kind = EM_VFS_DIR;
-    dir->name = pestrdup(name, 1);
+    dir->name = strdup(name);
     dir->parent = em_vfs_node_copy(parent);
     dir->data.dir.created  = time(NULL);
     zend_hash_init(
@@ -84,18 +84,18 @@ void em_vfs_node_free(em_vfs_node_t* node) {
     }
 
     if (node->name) {
-        pefree(node->name, 1);
+        free(node->name);
     }
 
     if (node->kind == EM_VFS_FILE) {
         if (node->data.file.content) {
-            pefree(node->data.file.content, 1);
+            free(node->data.file.content);
         }
     } else if (node->kind == EM_VFS_DIR) {
         zend_hash_destroy(&node->data.dir.children);
     }
 
-    pefree(node, 1);
+    free(node);
 
     node = NULL;
 }

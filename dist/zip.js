@@ -23,13 +23,21 @@ const ZipManager = {
 
         try {
             Module.persistence.disable();
+            Module.removeEventListener(
+                    "vfs.modified", refreshFileTree);
+
+            showProgressBar(`Uploading ZIP ${file}`, 100);
 
             const zip = await JSZip.loadAsync(file);
             let importedCount = 0;
+            let processCount  = 0;
             const errors = [];
 
             // Process all files in the ZIP
-            for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+            const entries = Object.entries(zip.files);
+            for (const [relativePath, zipEntry] of entries) {
+                updateProgressBar(
+                    `Creating ${relativePath}`, processCount, entries.length);
                 if (!zipEntry.dir) {
                     try {
                         // Always get file as Uint8Array for binary safety
@@ -60,6 +68,7 @@ const ZipManager = {
                         errors.push(`Error processing ${relativePath}: ${error.message}`);
                     }
                 }
+                processCount++;
             }
 
             return {
@@ -75,8 +84,11 @@ const ZipManager = {
                 message: `Failed to import ZIP: ${error.message}`
             };
         } finally {
+            Module.addEventListener(
+                "vfs.modified", refreshFileTree);
             Module.persistence.enable();
             Module.persistence.onDirty();
+            hideProgressBar();
         }
     },
 

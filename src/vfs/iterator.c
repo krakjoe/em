@@ -50,8 +50,8 @@ void* EMSCRIPTEN_KEEPALIVE
         return NULL;
     }
 
-    em_vfs_iterator_t* iterator = pecalloc(
-        1, sizeof(em_vfs_iterator_t), 1);
+    em_vfs_iterator_t* iterator = calloc(
+        1, sizeof(em_vfs_iterator_t));
     iterator->node = node;
     zend_hash_internal_pointer_reset_ex(
         &iterator->node->data.dir.children,
@@ -169,5 +169,5 @@ void EMSCRIPTEN_KEEPALIVE
     em_vfs_iterator_free(void* address) {
     em_vfs_iterator_t* iterator =
         (em_vfs_iterator_t*) address;
-    pefree(iterator, 1);
+    free(iterator);
 }

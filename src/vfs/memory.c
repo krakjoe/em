@@ -358,7 +358,7 @@ static em_vfs_memory_header_t* em_vfs_memory_calculate(em_vfs_node_t* node) {
     };
 
     em_vfs_memory_header_t* result =
-        pecalloc(1, sizeof(em_vfs_memory_header_t), 1);
+        calloc(1, sizeof(em_vfs_memory_header_t));
     memcpy(result, &calculator, sizeof(em_vfs_memory_header_t));
 
     zend_string*   name;
@@ -411,7 +411,7 @@ static uintptr_t em_vfs_memory_export(em_vfs_node_t* node, em_vfs_memory_header_
                 calculator->size.length;
 
     em_vfs_memory_header_t* result =
-        pecalloc(1, calculator->size.consumed, 1);
+        calloc(calculator->size.consumed, sizeof(char));
 
     memcpy(result, calculator,  sizeof(em_vfs_memory_header_t));
     memcpy(result->magic,       ZEND_STRL(EM_VFS_MEMORY_MAGIC));
