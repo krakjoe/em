@@ -86,9 +86,6 @@ function initializeChannel() {
         if (event.data.type === 'CLIENT_RESPONSE') {
             const resolve = pending.get(event.data.id);
             if (resolve) {
-                console.log(
-                    `[worker:${uuid}] Responding ${event.data.url}`,
-                event.data);
                 pending.delete(
                     event.data.id);
                 resolve(event.data);
@@ -148,9 +145,6 @@ self.addEventListener('fetch', async (event) => {
         const id = crypto.randomUUID();
         const promise = new Promise(
             resolve => pending.set(id, resolve));
-
-        console.log(
-            `[worker:${uuid}] Intercepting ${event.request.url}`);
 
         let head = `${event.request.method} ${event.request.url}\r\n`;
         if (event.request.headers) {

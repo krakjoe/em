@@ -66,9 +66,6 @@ int glob(const char* pattern, int flags, glob_error_function_t error, glob_t* bu
     em_vfs_path_t* vpath =
         em_vfs_mkpath(parse, false);
 
-    fprintf(stderr, "vpath: %s / %s\n",
-        vpath->directory, vpath->filename);
-
     em_vfs_iterator_t* it =
         em_vfs_iterator(vpath->directory);
 

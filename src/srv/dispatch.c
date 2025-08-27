@@ -78,6 +78,8 @@ static zend_always_inline const char* em_dispatch_mime(sapi_request_info* info, 
     } else if (strcmp(extension, ".yml") == SUCCESS ||
                strcmp(extension, ".yaml") == SUCCESS) {
         return "text/yaml; charset=UTF-8";
+    } else if (strcmp(extension, ".svg") == SUCCESS) {
+        return "image/svg+xml; charset=UTF-8";
     }
 
     return fallback;

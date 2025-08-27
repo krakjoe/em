@@ -1539,7 +1539,7 @@ Module.vfs = {
                     this.memory.address, 
                     this.memory.header.size.consumed
                 );
-
+                console.log("writing file ...", this.path);
                 await this.fs.writeFile(this.path, buffer);
             } catch (error) {
                 console.error(
@@ -1599,6 +1599,7 @@ Module['onRuntimeInitialized'] = function() {
     if (typeof window !== 'undefined') {
         window.addEventListener('unload', function() {
             if (typeof Module !== 'undefined') {
+                Module.persistence.onDirty();
                 Module.shutdown();
             }
         });

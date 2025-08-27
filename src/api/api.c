@@ -714,6 +714,8 @@ static void em_sapi_server(zval *vars)
 	php_import_environment_variables(vars);
 
     if (context->url.kind != EM_URL_UNUSED) {
+        php_register_variable("REMOTE_ADDR", "127.0.0.1", vars);
+
         php_register_variable("SERVER_NAME",
             (char*)context->url.host, vars);
 

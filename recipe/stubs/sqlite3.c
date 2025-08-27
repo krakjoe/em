@@ -26,6 +26,10 @@ typedef struct em_sqlite_file {
     sqlite3_file       base;      /* Base class. Must be first */
     em_vfs_abstract_t* abstract;  /* vfs abstract */
     int                flags;     /* Open flags */
+    struct {
+        void*  address;
+        size_t size;
+    } shm;
 } em_sqlite_file;
 
 /* Forward declarations */
@@ -110,24 +114,16 @@ static sqlite3_vfs em_sqlite_vfs = {
 };
 
 char* em_sqlite_path(const char* zPath) {
-    char* pPath = (char*) zPath;
     char* vresult;
 
-    while (pPath[0] == '/')
-        pPath++;
-
-    if (strstr(pPath, "vfs:")) {
-        pPath += sizeof("vfs:")-1;
-    }
-
-    em_vfs_path_t* vpath = em_vfs_mkpath(pPath, false);
+    em_vfs_path_t* vpath = em_vfs_mkpath(zPath, false);
 
     if (!vpath->directory && vpath->filename) {
         asprintf(&vresult,
             "/%s", vpath->filename);
     } else {
         asprintf(&vresult, 
-            "/%s/%s", vpath->directory, vpath->filename);
+            "%s/%s", vpath->directory, vpath->filename);
     }
 
     em_vfs_path_release(vpath);
@@ -137,6 +133,9 @@ char* em_sqlite_path(const char* zPath) {
 static int em_sqlite_close(sqlite3_file* pFile) {
     em_sqlite_file* file =
         (em_sqlite_file*)pFile;
+    if (file->shm.address) {
+        free(file->shm.address);
+    }
     em_vfs_close(file->abstract, false);
     em_vfs_release(file->abstract);
     return SQLITE_OK;
@@ -150,25 +149,29 @@ static int em_sqlite_read(sqlite3_file* pFile, void* zBuf, int iAmt, sqlite3_int
     }
 
     ssize_t n = em_vfs_read_offset(file->abstract, zBuf, (size_t)iAmt, (size_t)iOfst);
+
     if (n < 0) {
         return SQLITE_IOERR_READ;
     }
+
     if (n < iAmt) {
         memset((char*)zBuf + n, 0, iAmt - n);
-        // memvfs.c returns SQLITE_OK for short reads, zero-filling the rest
-        return SQLITE_OK;
     }
+
     return SQLITE_OK;
 }
 
 static int em_sqlite_write(sqlite3_file* pFile, const void* zBuf, int iAmt, sqlite3_int64 iOfst) {
     em_sqlite_file* file = 
         (em_sqlite_file*)pFile;
+
     ssize_t n = em_vfs_write_offset(
         file->abstract, zBuf, (size_t)iAmt, (size_t)iOfst);
+
     if (n < 0 || n < iAmt) {
         return SQLITE_IOERR_WRITE;
     }
+
     return SQLITE_OK;
 }
 
@@ -197,17 +200,14 @@ static int em_sqlite_file_size(sqlite3_file* pFile, sqlite3_int64* pSize) {
 }
 
 static int em_sqlite_lock(sqlite3_file* pFile, int eLock) {
-    /* No-op - single threaded environment */
     return SQLITE_OK;
 }
 
 static int em_sqlite_unlock(sqlite3_file* pFile, int eLock) {
-    /* No-op - single threaded environment */
     return SQLITE_OK;
 }
 
 static int em_sqlite_check_reserved_lock(sqlite3_file* pFile, int* pResOut) {
-    /* No-op - single threaded environment */
     *pResOut = 0;
     return SQLITE_OK;
 }
@@ -221,14 +221,26 @@ static int em_sqlite_file_control(sqlite3_file* pFile, int op, void* pArg) {
             *(char**)pArg = sqlite3_mprintf("em");
             rc = SQLITE_OK;
             break;
-        case 1: /* SQLITE_FCNTL_LOCKSTATE */
-        case 10: /* SQLITE_FCNTL_PERSIST_WAL */
-        case 13: /* SQLITE_FCNTL_POWERSAFE_OVERWRITE */
-        case 15: /* SQLITE_FCNTL_PRAGMA */
-        case 16: /* SQLITE_FCNTL_BUSYHANDLER */
-        case 30: /* SQLITE_FCNTL_OVERWRITE */
+
+        case SQLITE_FCNTL_LOCKSTATE:
+            *(int*)pArg =
+                SQLITE_LOCK_NONE;
             rc = SQLITE_OK;
-            break;
+        break;
+
+        case SQLITE_FCNTL_PERSIST_WAL:
+        case SQLITE_FCNTL_POWERSAFE_OVERWRITE:
+        case SQLITE_FCNTL_PRAGMA:
+        case SQLITE_FCNTL_BUSYHANDLER:       
+        case SQLITE_FCNTL_OVERWRITE:
+            rc = SQLITE_OK;
+        break;
+
+        case SQLITE_FCNTL_HAS_MOVED: /* SQLITE_FCNTL_HAS_MOVED */
+            *(int*)pArg = 0;
+            rc = SQLITE_OK;
+        break;
+
         default:
             rc = SQLITE_NOTFOUND;
             break;
@@ -247,25 +259,60 @@ static int em_sqlite_device_characteristics(sqlite3_file* pFile) {
 }
 
 static int em_sqlite_shm_map(
-  sqlite3_file *pFile,
-  int iPg,
-  int pgsz,
-  int bExtend,
-  void volatile **pp
+    sqlite3_file *pFile,
+    int iPg,
+    int pgsz,
+    int bExtend,
+    void volatile **pp
 ) {
-  return SQLITE_IOERR_SHMMAP;
+    em_sqlite_file* file =
+        (em_sqlite_file*) pFile;
+    size_t required =
+        (iPg + 1) * pgsz;
+
+    if (!file->shm.address || (file->shm.size < required)) {
+        if (!bExtend)  {
+            return SQLITE_READONLY_CANTINIT;
+        }
+
+        file->shm.address = realloc(file->shm.address, required);
+
+        if (!file->shm.address) {
+            return SQLITE_IOERR_SHMMAP;
+        }
+
+        if (required > file->shm.size) {
+            memset(
+                file->shm.address + file->shm.size,
+                0,
+                required - file->shm.size);
+        }
+
+        file->shm.size = required;
+    }
+
+    *pp = file->shm.address + (iPg * pgsz);
+
+    return SQLITE_OK;
 }
 
 static int em_sqlite_shm_lock(sqlite3_file *pFile, int offset, int n, int flags){
-  return SQLITE_IOERR_SHMLOCK;
+    return SQLITE_OK;
 }
 
 static void em_sqlite_shm_barrier(sqlite3_file *pFile){
-  return;
+    return;
 }
 
 static int em_sqlite_shm_unmap(sqlite3_file *pFile, int deleteFlag){
-  return SQLITE_OK;
+    em_sqlite_file* file =
+        (em_sqlite_file*) pFile;
+    if (deleteFlag && file->shm.address) {
+        free(
+            file->shm.address);
+        memset(&file->shm, 0, sizeof(file->shm));
+    }
+    return SQLITE_OK;
 }
 
 static int em_sqlite_shm_fetch(
@@ -348,16 +395,13 @@ static int em_sqlite_delete(sqlite3_vfs* pVfs, const char* zName, int syncDir) {
         em_vfs_unlink(vpath, false);
     free(vpath);
 
-    return result ? SQLITE_OK : SQLITE_IOERR_DELETE;
+    return result ? SQLITE_OK :
+        SQLITE_IOERR_DELETE;
 }
 
 static int em_sqlite_access(sqlite3_vfs* pVfs, const char* zName, int flags, int* pResOut) {
-    if (flags == SQLITE_ACCESS_READWRITE) {
-        *pResOut = 1;
-        return SQLITE_OK;
-    }
 
-    if (flags == SQLITE_ACCESS_EXISTS) {
+    if (flags == SQLITE_ACCESS_EXISTS || flags == SQLITE_ACCESS_READ) {
         char* path = em_sqlite_path(zName);
         em_vfs_abstract_t* abstract = em_vfs_open(path, "r");
         if (abstract) {
@@ -367,6 +411,13 @@ static int em_sqlite_access(sqlite3_vfs* pVfs, const char* zName, int flags, int
             *pResOut = 0;
         }
         free(path);
+        return SQLITE_OK;
+    }
+
+    if (flags ==
+            SQLITE_ACCESS_READWRITE) {
+        /* everywhere is read/writable */
+        *pResOut = 1;
         return SQLITE_OK;
     }
 

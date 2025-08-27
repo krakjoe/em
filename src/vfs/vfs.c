@@ -17,6 +17,7 @@
  */
 
 #include <emscripten.h>
+#include <emscripten/heap.h>
 
 #include <php.h>
 
@@ -207,6 +208,11 @@ ssize_t em_vfs_truncate(em_vfs_abstract_t* abstract, size_t count) {
             maximum *= 2;
         }
         abstract->data = realloc(abstract->data, maximum);
+        if (!abstract->data) {
+            errno =
+                ENOMEM;
+            return -1;
+        }
         abstract->maximum = maximum;
     }
     memset(abstract->data + abstract->length, 0, count - abstract->length);
@@ -222,14 +228,30 @@ ssize_t em_vfs_write_offset(em_vfs_abstract_t* abstract, const char* buffer, siz
         }
         abstract->data = realloc(
             abstract->data, maximum);
+        if (!abstract->data) {
+            errno =
+                ENOMEM;
+            return -1;
+        }
         abstract->maximum = maximum;
     }
 
+    // Zero fill holes
+    if (offset > abstract->length) {
+        memset(
+            abstract->data + abstract->length,
+            0,
+            offset - abstract->length);
+    }
+
+    // Write
     memcpy(abstract->data + offset, buffer, count);
+
     // Update position if this write is at/after current position
     if (offset + count > abstract->position) {
         abstract->position = offset + count;
     }
+
     // Update length if we wrote past the end
     if (offset + count > abstract->length) {
         abstract->length = offset + count;
@@ -309,7 +331,7 @@ void em_vfs_close(em_vfs_abstract_t* abstract, bool sync) {
             memcpy(abstract->data,
                 abstract->node->data.file.content,
                 abstract->length);
-            abstract->position = 0;
+            abstract->maximum = abstract->length;
             return;
         }
 

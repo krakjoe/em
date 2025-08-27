@@ -61,7 +61,6 @@ class Browser {
                     return;
                 }
 
-                console.log(`[browser:${this.uuid}] Requesting ${event.data.url}`, event.data);
                 window.updateStatus(
                     `Loading ${event.data.url}`)
 
@@ -83,8 +82,6 @@ class Browser {
                                 new Uint8Array(),
                     );
 
-                    console.log(
-                        `[browser:${this.uuid}] Responding ${event.data.url}`, response);
                     this.channel.postMessage({
                         type: 'CLIENT_RESPONSE',
                         id: event.data.id,
