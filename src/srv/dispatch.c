@@ -27,8 +27,6 @@
 #include <ext/standard/php_var.h>
 #include <ext/json/php_json.h>
 
-HashTable __em_environ__;
-
 void em_dispatch_file(em_dispatch_context_t* context);
 void em_dispatch_script(em_dispatch_context_t* context);
 void em_dispatch_code(em_dispatch_context_t* context);
@@ -289,7 +287,8 @@ bool em_dispatch_env(HashTable* table, const char* env, size_t elen, bool persis
 
 static em_dispatch_context_t*
     em_dispatch_context_create_empty(
-        sapi_request_info* info) {
+        sapi_request_info* info,
+        em_run_reaper_t reaper) {
     em_dispatch_context_t* context =
         pecalloc(1, sizeof(em_dispatch_context_t), 1);
     memset(context, 0, sizeof(em_dispatch_context_t));
@@ -299,7 +298,8 @@ static em_dispatch_context_t*
         .info    = SG(request_info)
     };
 
-    context->info = info;
+    context->reaper = reaper;
+    context->info   = info;
 
     em_buffer_clear(
         &context->buffers.request.head, false);
@@ -332,7 +332,8 @@ static em_dispatch_context_t*
         sapi_request_info* info,
         const char* env,  size_t elen,
         const char* head, size_t hlen,
-        const char* body, size_t blen) {
+        const char* body, size_t blen,
+        em_run_reaper_t reaper) {
     em_dispatch_context_t* context =
         pecalloc(1, sizeof(em_dispatch_context_t), 1);
     memset(context, 0, sizeof(em_dispatch_context_t));
@@ -342,7 +343,8 @@ static em_dispatch_context_t*
         .info    = SG(request_info)
     };
 
-    context->info = info;
+    context->reaper = reaper;
+    context->info   = info;
 
     em_buffer_write(
         &context->buffers.request.head, head, hlen);
@@ -422,10 +424,12 @@ static em_dispatch_context_t*
 
 em_dispatch_context_t* em_dispatch_enter_script(
     sapi_request_info* info,
-    const char* script
+    const char* script,
+    em_run_reaper_t reaper
 ) {
     em_dispatch_context_t* context =
-        em_dispatch_context_create_empty(info);
+        em_dispatch_context_create_empty(
+            info, reaper);
 
     info->path_translated = estrdup(script);
 
@@ -437,9 +441,11 @@ em_dispatch_context_t* em_dispatch_enter_script(
 
 em_dispatch_context_t* em_dispatch_enter_code(
     sapi_request_info* info,
-    const char* code, size_t length) {
+    const char* code, size_t length,
+    em_run_reaper_t reaper) {
     em_dispatch_context_t* context =
-        em_dispatch_context_create_empty(info);
+        em_dispatch_context_create_empty(
+            info, reaper);
 
     em_buffer_write(
         &context->buffers.request.body,
@@ -448,20 +454,22 @@ em_dispatch_context_t* em_dispatch_enter_code(
     context->handler =
         em_dispatch_code;
 
-    return (SG(server_context) = context);  
+    return (SG(server_context) = context);
 }
 
 em_dispatch_context_t* em_dispatch_enter(
     sapi_request_info* info,
     const char* env,  size_t elen,
     const char* head, size_t hlen,
-    const char* body, size_t blen) {
+    const char* body, size_t blen,
+    em_run_reaper_t reaper) {
     em_dispatch_context_t* context =
         em_dispatch_context_create(
             info, 
             env, elen,
             head, hlen,
-            body, blen);
+            body, blen,
+            reaper);
     zend_llist_position position;
     em_dispatch_header_t* header;
 
@@ -608,6 +616,13 @@ void em_dispatch_file(em_dispatch_context_t* context) {
 }
 
 void em_dispatch_script(em_dispatch_context_t* context) {
+    em_vfs_path_t* vpath =
+        em_vfs_mkpath(
+            context->info->path_translated, false);
+
+    chdir(vpath->directory);
+    em_vfs_path_release(vpath);
+
     zend_op_array* ops =
         em_compile_script(
             context->info->path_translated);
@@ -618,7 +633,9 @@ void em_dispatch_script(em_dispatch_context_t* context) {
     }
 
     em_dispatch_nocache(context);
+
     em_execute(ops);
+
     em_mutators_mutate(context);
 }
 
@@ -687,10 +704,9 @@ static em_dispatch_handler_t em_dispatch_select(const char* mime, sapi_request_i
 }
 
 void em_dispatch_startup(void) {
-    zend_hash_init(
-        &__em_environ__, 8, NULL, ZVAL_PTR_DTOR, 1);
+
 }
 
 void em_dispatch_shutdown(void) {
-    zend_hash_destroy(&__em_environ__);
+
 }

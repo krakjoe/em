@@ -16,10 +16,10 @@
   +----------------------------------------------------------------------+
  */
 
-#include "node.h"
-#include "path.h"
-#include "dir.h"
-#include "vfs.h"
+#include <vfs/vfs.h>
+#include <vfs/dir.h>
+#include <vfs/node.h>
+#include <vfs/path.h>
 
 typedef struct _em_vfs_dir_abstract_t {
     em_vfs_node_t* directory;

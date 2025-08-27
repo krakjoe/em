@@ -13,19 +13,6 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
-# Build the entire world ...
+# Nothing to do ...
 ########################################################################
-$(eval $(call EM_BAKE_RECIPE, session))
-$(eval $(call EM_BAKE_RECIPE, bcmath))
-$(eval $(call EM_BAKE_RECIPE, calendar))
-$(eval $(call EM_BAKE_RECIPE, ctype))
-$(eval $(call EM_BAKE_RECIPE, filter))
-$(eval $(call EM_BAKE_RECIPE, mbstring))
-$(eval $(call EM_BAKE_RECIPE, opcache))
-$(eval $(call EM_BAKE_RECIPE, tokenizer))
-$(eval $(call EM_BAKE_RECIPE, iconv))
-########################################################################
-include $(EM_BAKE_IN)/compression.mk
-include $(EM_BAKE_IN)/database.mk
-include $(EM_BAKE_IN)/image.mk
-include $(EM_BAKE_IN)/xml.mk
+$(eval $(call EM_RECIPE_ADD_CONFIGURE, --enable-session=static))

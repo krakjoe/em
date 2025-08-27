@@ -231,25 +231,40 @@ Module.dispatch = async function(env, head, body) {
     Module.HEAPU8[request.head + head.byteLength] = 0;
     Module.HEAPU8[request.body + body.byteLength] = 0;
 
-    let context = null;
+    let context = await new Promise((resolve, reject) => {
+        const reaper = (address) => {
+            if (address > 0) {
+                resolve(address);
+            } else {
+                reject(new Error("Unexpected result, dispatch failed"));
+            }
+        };
 
-    try {
-        context = await Module.ccall(
-            'em_run_request',
-            'number',
-            [   'number','number',    /* const char* env,  size_t elen */
-                'number', 'number',   /* const char* head, size_t hlen */
-                'number', 'number'    /* const char* body, size_t blen */
-            ], [ 
-                request.env,  env.byteLength,
-                request.head, head.byteLength,
-                request.body, body.byteLength,
-            ], { async: true });
-    } finally {
-        Module._free(request.env);
-        Module._free(request.head);
-        Module._free(request.body);
-    }
+        const callback =
+            Module.addFunction(reaper, "vi");
+
+        try {
+            Module.ccall(
+                'em_run_request',
+                'void',
+                [   'number','number',    /* const char* env,  size_t elen */
+                    'number', 'number',   /* const char* head, size_t hlen */
+                    'number', 'number',    /* const char* body, size_t blen */
+                    'function'
+                ], [ 
+                    request.env,  env.byteLength,
+                    request.head, head.byteLength,
+                    request.body, body.byteLength,
+                    callback
+                ], { async: true });
+        } finally {
+            Module._free(request.env);
+            Module._free(request.head);
+            Module._free(request.body);
+
+            Module.removeFunction(callback);
+        }
+    });
 
     // check for errors
     if (context < 0) {
@@ -345,11 +360,28 @@ Module.include = async function(script, output) {
         }
     }));
 
-    let context = await Module.ccall(
-        'em_run_script',
-        'number',
-        [ 'string' ],
-        [  script  ], { async: true });
+    let context = await new Promise((resolve, reject) => {
+        const reaper = (address) => {
+            if (address > 0) {
+                resolve(address);
+            } else {
+                reject(new Error("Unexpected result, include failed"));
+            }
+        };
+
+        const callback =
+            Module.addFunction(reaper, "vi");
+
+        try {
+            Module.ccall(
+                'em_run_script',
+                'void',
+                [ 'string', 'function' ],
+                [  script,   callback  ], { async: true });
+        } finally {
+            Module.removeFunction(callback);
+        }
+    });
 
     // check for errors
     if (!context) {
@@ -505,11 +537,28 @@ Module.invoke = async function(input, output = undefined) {
         } 
     }));
 
-    let context = await Module.ccall(
-        'em_run_string',
-        'number',
-        ['string', 'number'],
-        [ code.value, code.length ], { async: true });
+    let context = await new Promise((resolve, reject) => {
+        const reaper = (address) => {
+            if (address > 0) {
+                resolve(address);
+            } else {
+                reject(new Error("Unexpected result, dispatch failed"));
+            }
+        };
+
+        const callback =
+            Module.addFunction(reaper, "vi");
+
+        try {
+            Module.ccall(
+                'em_run_string',
+                'void',
+                ['string', 'number', 'function'],
+                [ code.value, code.length, callback ], { async: true });
+        } finally {
+            Module.removeFunction(callback);
+        }
+    });
 
     // check for errors
     if (context < 0) {
@@ -1418,14 +1467,16 @@ Module.vfs = {
                 try {
                     requestIdleCallback(async() => {
                         Module.enableEvent("vfs.modified");
-                        Module.dispatchEvent(new CustomEvent('vfs.modified', { 
-                            detail: {
-                                "method": "write",
-                                "memory": this.memory,
-                                "paths":  []
-                            }
-                        }));
-                        this.memory.free();
+                        if (this.memory) {
+                            Module.dispatchEvent(new CustomEvent('vfs.modified', { 
+                                detail: {
+                                    "method": "write",
+                                    "memory": this.memory,
+                                    "paths":  []
+                                }
+                            }));
+                            this.memory.free();
+                        }
                         this.memory = null;
                     });
                 } catch (e) {}

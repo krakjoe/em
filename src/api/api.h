@@ -32,18 +32,23 @@ bool EMSCRIPTEN_KEEPALIVE em_env_import(
 * em_run_request/string/script API shall return a uintptr_t to the context
 */
 
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
+typedef void (*em_run_reaper_t)(uintptr_t context);
+
+void EMSCRIPTEN_KEEPALIVE em_run_request(
     const char* env,  size_t elen,
     const char* head, size_t hlen,
-    const char* body, size_t blen);
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(
-    const char* code, size_t length);
-uintptr_t EMSCRIPTEN_KEEPALIVE
-  em_run_script(const char* script);
+    const char* body, size_t blen,
+    em_run_reaper_t reaper);
+void EMSCRIPTEN_KEEPALIVE em_run_string(
+    const char* code, size_t length,
+    em_run_reaper_t reaper);
+void EMSCRIPTEN_KEEPALIVE em_run_script(
+    const char* script,
+    em_run_reaper_t reaper);
 
 /**
  * The caller of em_run_request/string/script must use the address to access
- * the result and it's length, they are also responsible for freeing the context
+ * the result and its length, they are also responsible for freeing the context
  */
 char* EMSCRIPTEN_KEEPALIVE em_run_result(uintptr_t address);
 size_t EMSCRIPTEN_KEEPALIVE em_run_length(uintptr_t address);

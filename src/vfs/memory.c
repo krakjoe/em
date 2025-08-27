@@ -16,9 +16,9 @@
   +----------------------------------------------------------------------+
  */
 
-#include "vfs.h"
-#include "node.h"
-#include "memory.h"
+#include <vfs/vfs.h>
+#include <vfs/memory.h>
+#include <vfs/node.h>
 
 #define EM_VFS_YIELD_RECORDS  128
 #define EM_VFS_YIELD_BYTES    2048

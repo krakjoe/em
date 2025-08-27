@@ -24,6 +24,7 @@
 
 #include <buffer/buffer.h>
 #include <url/url.h>
+#include <api/api.h>
 
 extern HashTable __em_environ__;
 
@@ -58,6 +59,7 @@ struct _em_dispatch_context_t {
     } headers;
     em_dispatch_context_previous_t previous;
     em_dispatch_handler_t handler;
+    em_run_reaper_t reaper;
 };
 
 typedef struct _em_dispatch_header_t {
@@ -92,13 +94,15 @@ em_dispatch_context_t* em_dispatch_enter(
     sapi_request_info* info,
     const char* env,  size_t elen,
     const char* head, size_t hlen,
-    const char* body, size_t blen);
+    const char* body, size_t blen,
+    em_run_reaper_t reaper);
 em_dispatch_context_t* em_dispatch_enter_script(
     sapi_request_info* info,
-    const char* script);
+    const char* script, em_run_reaper_t reaper);
 em_dispatch_context_t* em_dispatch_enter_code(
     sapi_request_info* info,
-    const char* code, size_t length);
+    const char* code, size_t length,
+    em_run_reaper_t reaper);
 em_dispatch_context_t* em_dispatch_leave(
     em_dispatch_context_t* context);
 

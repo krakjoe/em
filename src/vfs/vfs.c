@@ -31,10 +31,10 @@
 #include <ext/standard/php_filestat.h>
 #include <sys/types.h>
 
-#include "node.h"
-#include "path.h"
-#include "dir.h"
-#include "vfs.h"
+#include <vfs/vfs.h>
+#include <vfs/node.h>
+#include <vfs/path.h>
+#include <vfs/dir.h>
 
 #ifdef HAVE_EM_SQLITE_VFS
 extern void em_sqlite_vfs_register(void);
@@ -42,9 +42,9 @@ extern void em_sqlite_vfs_unregister(void);
 #endif
 
 php_stream_wrapper em_vfs_wrapper;
-static php_stream_ops     em_vfs_ops;
+static php_stream_ops  em_vfs_ops;
 
-static em_vfs_node_t* em_vfs = NULL;
+em_vfs_node_t* em_vfs = NULL;
 
 em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make) {
     if (!em_vfs) {
@@ -524,17 +524,29 @@ php_stream_wrapper em_vfs_wrapper = {
 void em_vfs_startup(void) {
     em_vfs = calloc(sizeof(em_vfs_node_t), 1);
     em_vfs->kind = EM_VFS_DIR;
-    em_vfs->name = pestrdup("/", 1);
+    em_vfs->name = strdup("/");
     em_vfs->parent = NULL;
     em_vfs->data.dir.created = time(NULL);
     em_vfs->refcount = 1;
     zend_hash_init(
         &em_vfs->data.dir.children, 8,
         NULL, em_vfs_node_dtor, 1);
+    em_vfs_path_startup();
+
+    em_vfs_mkdir("/tmp");
+    setenv(
+        "TMPDIR", "/tmp", true);
+
 #ifdef HAVE_EM_SQLITE_VFS
+    em_vfs_mkdir(
+        "/tmp/sqlite3");
+    setenv(
+        "SQLITE_TMPDIR",
+        "/tmp/sqlite3", true);
     em_sqlite_vfs_register();
 #endif
-    em_vfs_path_startup();
+
+    chdir("/");
 }
 
 void em_vfs_activate(void) {
@@ -554,9 +566,9 @@ void em_vfs_shutdown(void) {
 #ifdef HAVE_EM_SQLITE_VFS
     em_sqlite_vfs_unregister();
 #endif
+    em_vfs_path_shutdown();
 
     em_vfs_node_release(em_vfs);
-    em_vfs_path_shutdown();
 }
 
 bool EMSCRIPTEN_KEEPALIVE

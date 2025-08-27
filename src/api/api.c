@@ -44,6 +44,9 @@ extern void em_shm_startup(void);
 extern void em_shm_shutdown(void);
 #endif
 
+extern void em_env_startup(void);
+extern void em_env_shutdown(void);
+
 extern sapi_module_struct em_sapi_module;
 
 #if PHP_VERSION_ID >= 80500
@@ -148,6 +151,8 @@ void em_buffer_error(int type, zend_string* file, const uint32_t lineno, zend_st
 /* {{{ code lifecycle management */
 static zend_always_inline zend_result
     em_activate(bool headers) {
+
+    chdir("/");
 
     if (php_request_startup() != SUCCESS) {
         php_module_shutdown();
@@ -292,11 +297,6 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 #ifdef HAVE_EM_SHM
     em_shm_startup();
 #endif
-    /**
-     * We don't expect to leak, this is not leak suppression
-     * We are stopping uaf at leak checker
-     */
-    putenv("USE_ZEND_ALLOC=0");
 
 #ifdef ZTS
     php_tsrm_startup();
@@ -306,8 +306,14 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 #endif
 
     zend_signal_startup();
-
+    em_env_startup();
     em_vfs_startup();
+
+    /**
+     * We don't expect to leak, this is not leak suppression
+     * We are stopping uaf at leak checker
+     */
+    putenv("USE_ZEND_ALLOC=0");
 
     sapi_startup(&em_sapi_module);
 
@@ -357,58 +363,78 @@ bool EMSCRIPTEN_KEEPALIVE em_env_import(const char* env, size_t elen) {
     return em_dispatch_env(&__em_environ__, env, elen, true);
 }
 
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_string(const char* code, size_t length) {
+void EMSCRIPTEN_KEEPALIVE em_run_string(
+    const char* code, size_t length,
+    em_run_reaper_t reaper) {
     em_dispatch_context_t* context =
         em_dispatch_enter_code(
-            &SG(request_info), code, length);
+            &SG(request_info),
+            code, length,
+            reaper);
 
     if (em_activate(false) != SUCCESS) {
-        return (uintptr_t) -1;
+        context->reaper(
+            (uintptr_t) -1);
+        return;
     }
 
     context->handler(context);
 
     em_deactivate();
 
-    return (uintptr_t) em_dispatch_leave(context);
+    context->reaper(
+        (uintptr_t)
+            em_dispatch_leave(context));
 }
 
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_script(const char* script) {
+void EMSCRIPTEN_KEEPALIVE em_run_script(
+    const char* script, em_run_reaper_t reaper) {
     em_dispatch_context_t* context =
         em_dispatch_enter_script(
-            &SG(request_info), script);
+            &SG(request_info),
+            script, reaper);
 
     if (em_activate(false) != SUCCESS) {
-        return (uintptr_t) -1;
+        context->reaper(
+            (uintptr_t) -1);
+        return;
     }
 
     context->handler(context);
-
+    
     em_deactivate();
 
-    return (uintptr_t) em_dispatch_leave(context);
+    context->reaper(
+        (uintptr_t)
+            em_dispatch_leave(context));
 }
 
-uintptr_t EMSCRIPTEN_KEEPALIVE em_run_request(
+void EMSCRIPTEN_KEEPALIVE em_run_request(
     const char* env,  size_t elen,
     const char* head, size_t hlen,
-    const char* body, size_t blen) {
+    const char* body, size_t blen,
+    em_run_reaper_t reaper) {
     em_dispatch_context_t* context =
         em_dispatch_enter(
             &SG(request_info),
             env,  elen,
             head, hlen,
-            body, blen);
+            body, blen,
+            reaper);
 
     if (em_activate(true) != SUCCESS) {
-        return (uintptr_t) -1;
+        context->reaper(
+            (uintptr_t) -1);
+        return;
     }
 
     context->handler(context);
 
     em_deactivate();
 
-    return (uintptr_t) em_dispatch_leave(context);
+    context->reaper(
+        (uintptr_t)
+            em_dispatch_leave(context));
 }
 
 char* EMSCRIPTEN_KEEPALIVE em_run_result(uintptr_t address) {
@@ -454,6 +480,7 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
     sapi_shutdown();
 
     em_vfs_shutdown();
+    em_env_shutdown();
 
 #ifdef ZTS
     tsrm_shutdown();
@@ -680,22 +707,6 @@ __em_sapi_headers_leave:
     return SAPI_HEADER_SENT_SUCCESSFULLY;
 }
 
-static char* em_sapi_getenv(const char* name, size_t length) {
-    em_dispatch_context_t* context = SG(server_context);
-    HashTable* table = context ?
-        &context->environ :
-        &__em_environ__;
-
-    zval* item = zend_hash_str_find(
-        table, name, length);
-
-    if (!item) {
-        return NULL;
-    }
-
-    return Z_STRVAL_P(item);
-}
-
 static void em_sapi_server(zval *vars)
 {
     em_dispatch_context_t* context = SG(server_context);
@@ -780,7 +791,7 @@ sapi_module_struct em_sapi_module = {
     em_sapi_write,                /* ub write */
     em_sapi_flush,                /* flush */
     NULL,                         /* get uid */
-    em_sapi_getenv,               /* getenv */
+    NULL,                         /* getenv */
     em_sapi_error,                /* error handler */
     NULL,                         /* header handler */
     em_sapi_headers,              /* send headers handler */

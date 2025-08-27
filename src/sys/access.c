@@ -15,23 +15,24 @@
   | Author: krakjoe                                                      |
   +----------------------------------------------------------------------+
  */
+#include <vfs/vfs.h>
 
-#ifndef HAVE_EM_PATH
-#define HAVE_EM_PATH
-#include <php.h>
+/**
+ * Opcache invokes this to check access for file cache
+ */
+int access(const char* path, int mode) {
+    (void) mode; // No such thing
 
-typedef struct _em_vfs_path_t {
-    char* original;     // Full original path: "vfs://dir/file.txt"
-    char* directory;    // Directory part: "dir" or "" for root
-    char* filename;     // Filename part: "file.txt"
-    bool is_root;       // True if directory is root
-} em_vfs_path_t;
+    em_vfs_path_t* vpath =
+        em_vfs_mkpath(path, false);
 
-void em_vfs_path_startup(void);
-em_vfs_path_t* em_vfs_mkpath(
-  const char* path, bool directory);
-void em_vfs_path_release(em_vfs_path_t* vpath);
-char* em_vfs_path_string(em_vfs_path_t* vpath);
-void em_vfs_path_shutdown(void);
-#endif
+    php_stream_statbuf ssb;
+    if (em_vfs_stat_path(
+            vpath, &ssb, true) != SUCCESS) {
+        em_vfs_path_release(vpath);
+        return FAILURE;
+    }
 
+    em_vfs_path_release(vpath);
+    return SUCCESS;
+}

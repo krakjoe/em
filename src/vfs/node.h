@@ -63,6 +63,7 @@ static em_vfs_node_t*
     node->refcount++;
     return node;
 }
+char* em_vfs_node_path(em_vfs_node_t* node);
 void em_vfs_node_release(em_vfs_node_t* node);
 void em_vfs_node_dtor(zval *zv);
 void em_vfs_node_free(em_vfs_node_t* node);

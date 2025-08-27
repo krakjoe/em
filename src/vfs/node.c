@@ -16,7 +16,9 @@
   +----------------------------------------------------------------------+
  */
 
-#include "node.h"
+#include <vfs/node.h>
+
+extern em_vfs_node_t* em_vfs;
 
 zend_result em_vfs_node_stat(em_vfs_node_t* node, php_stream_statbuf *ssb, bool link) {
     memset(ssb, 0, sizeof(php_stream_statbuf));
@@ -76,6 +78,54 @@ em_vfs_node_t* em_vfs_node_mkdir(em_vfs_node_t* parent, const char* name) {
         name, strlen(name), dir);  
     dir->refcount = 1;  
     return dir;
+}
+
+char* em_vfs_node_path(em_vfs_node_t* node) {
+    size_t length = 0, segments = 0;
+    em_vfs_node_t* iterate = node;
+
+    if (node == em_vfs) {
+        return strdup("/");
+    }
+
+    do {
+        length +=
+            strlen(iterate->name);
+        length   += 1;
+        segments += 1;
+    } while ((iterate = iterate->parent));
+
+    char** components =
+        calloc(segments, sizeof(char*));
+    size_t unshift = segments - 1;
+
+    iterate = node;
+    do {
+        components[unshift--] =
+            iterate->name;
+    } while ((iterate = iterate->parent));
+
+    char* buffer =
+        calloc(length + 2, sizeof(char));
+
+    strcat(buffer, "/");
+    for (size_t component = 1;
+                component < segments;
+                component++) {
+        strcat(buffer, components[component]);
+        if (strcmp(components[component], "/") != SUCCESS) {
+            if (component < segments - 1) {
+                strcat(buffer, "/");
+            }
+        }
+    }
+
+    if (node->kind == EM_VFS_DIR) {
+        strcat(buffer, "/");
+    }
+
+    free(components);
+    return buffer;
 }
 
 void em_vfs_node_free(em_vfs_node_t* node) {

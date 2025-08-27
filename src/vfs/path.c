@@ -16,14 +16,38 @@
   +----------------------------------------------------------------------+
  */
 
-#include "path.h"
+#include <vfs/path.h>
 
 static char* __em_vfs_path_empty__ = NULL;
 static char* __em_vfs_path_root__  = NULL;
-
+ 
 void em_vfs_path_startup(void) {
     __em_vfs_path_empty__ = strdup("");
     __em_vfs_path_root__  = strdup("/");
+}
+
+static char* em_vfs_path_working(const char* path) {
+    if (path[0] == '/') {
+        return strdup(path);
+    }
+
+    char cwd[MAXPATHLEN];
+    getcwd(
+        cwd, MAXPATHLEN);
+    size_t length = strlen(cwd);
+
+    char* working = calloc(
+        length  + strlen(path) + 1,
+        sizeof(char));
+
+    memcpy(
+        working,
+        cwd,
+        length);
+    memcpy(
+        &working[length],
+        path, strlen(path));
+    return working;
 }
 
 static char* em_vfs_path_normalize(const char *path, bool directory) {
@@ -33,11 +57,12 @@ static char* em_vfs_path_normalize(const char *path, bool directory) {
             path + 6 : path;
 
     // Duplicate input so we can tokenize safely
-    char *work = strdup(input);
+    char *work = em_vfs_path_working(input);
+    size_t length = strlen(work);
     char *segments[256];
     int count = 0;
     bool has_trailing_slash =
-        (input[strlen(input) - 1] == '/');
+        (work[length - 1] == '/');
 
     // Tokenize and process segments
     char *token = strtok(work, "/");
@@ -52,13 +77,7 @@ static char* em_vfs_path_normalize(const char *path, bool directory) {
         token = strtok(NULL, "/");
     }
 
-    // Allocate output buffer 
-    size_t length =
-        strlen(input)          + // Input buffer length
-        (count * sizeof(char)) + // Component Separation
-        2;                       // Extra slashes start/end
-
-    char *normalized = calloc(length, sizeof(char));
+    char *normalized = calloc(length + count + 2, sizeof(char));
 
     // Rebuild normalized path
     if (count == 0) {

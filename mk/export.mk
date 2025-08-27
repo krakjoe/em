@@ -82,7 +82,9 @@ EM_EXPORT_METHODS = [      \
 	"stringToUTF8",        \
 	"lengthBytesUTF8",     \
 	"HEAPU8",              \
-	"HEAP32"               \
+	"HEAP32",              \
+	"addFunction",         \
+	"removeFunction"       \
 ]
 define EM_EXPORT_ADD_METHOD
 $(eval EM_EXPORT := $(strip $(1)))
@@ -95,12 +97,12 @@ endef
 ########################################################################
 # EM_EXPORT_ADD_BLACKLIST
 ########################################################################
-EM_EXPORT_BLACKLIST = [    \
-	"em_buffer_join",      \
-	"em_buffer_write",     \
-	"em_buffer_clear",     \
-	"php_request_startup", \
-	"php_request_shutdown" \
+EM_EXPORT_BLACKLIST = [     \
+	"em_buffer_join",       \
+	"em_buffer_write",      \
+	"em_buffer_clear",      \
+	"php_request_startup",  \
+	"php_request_shutdown"  \
 ]
 define EM_EXPORT_ADD_BLACKLIST
 $(eval EM_EXPORT := $(strip $(1)))
