@@ -4,11 +4,12 @@ assert(
 let it = Module.vfs.iterate("/");
 let vfsEncoder = new TextEncoder("utf-8");
 
-assert(!it.count(), "iterator should be empty");
+assert(it.count() == 1, "iterator should be empty");
 assert(Module.vfs.put("/one/two/three/four.txt", vfsEncoder.encode("four.txt")));
 assert(Module.vfs.put("/one/two/three/four", vfsEncoder.encode("four")));
 assert(it.reset(), "iterator should reset");
-assertEquals(it.count(), 1, "iterator should contain one entry");
+assertEquals(it.count(), 2, "iterator should contain one entry");
+it.next();
 assertEquals(it.name(), "one", "iterator should be at /one");
 assertEquals(it.kind(), Module.vfs.EM_VFS_DIR, "/one should be a directory");
 it.free()

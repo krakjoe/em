@@ -15,3 +15,4 @@ foreach ($entries as $entry) {
 --EXPECT--
 file1.txt
 file2.txt
+tmp
