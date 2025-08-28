@@ -546,7 +546,13 @@ static void em_sapi_flush(void* ctx) {
 
 static char* em_sapi_cookies(void)
 {
-	return NULL;
+    em_dispatch_context_t* context = SG(server_context);
+
+    if (!context) {
+        return NULL;
+    }
+
+    return em_dispatch_find(context, "cookie");
 }
 
 static size_t em_sapi_post(char* buffer, size_t length) {

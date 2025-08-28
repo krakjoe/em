@@ -263,7 +263,9 @@
                             updateStatus("[boot] Virtual browser ready!");
                             document.getElementById('browseBtn').style.display = 'inline-block';
                         } catch (e) {
-                            updateStatus("[boot] Registration failed, check configuration", "error");
+                            updateStatus(
+                                "[boot] Registration failed, check configuration", "error");
+                            return;
                         }
                     } else {
                         updateStatus("[boot] Welcome back! Virtual browser ready.");
@@ -276,7 +278,9 @@
                     }
                 } catch (e) {
                     updateStatus("[boot] Exception occurred, see console for details", "error");
-                    console.error('[boot] Exception', e);
+                    console.error(
+                        '[boot] Exception', e);
+                    return;
                 }
             }
         } else {

@@ -127,22 +127,6 @@ class Browser {
     uuid   = null;
 }
 
-function findContentType(headers, fallback) {
-    if (!headers) {
-        return fallback;
-    }
-
-    if (headers["Content-Type"]) {
-        return headers["Content-Type"];
-    }
-
-    if (headers["content-type"]) {
-        return headers["content-type"];
-    }
-
-    return fallback;
-}
-
 window.updateBrowserButtons = async function(container) {
     const back = container.querySelector("#browser-back");
     back.disabled = window.browserTab.historyIndex <= 0;

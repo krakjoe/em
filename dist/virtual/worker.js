@@ -98,8 +98,144 @@ class State {
     }
 }
 
+class Cookies {
+    static IDB_DB_NAME = "em-worker-cookies";
+    static IDB_DB_VERSION = 1;
+    static IDB_ST_NAME = "cookies";
+
+    static async open() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(
+                Cookies.IDB_DB_NAME, Cookies.IDB_DB_VERSION);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(Cookies.IDB_ST_NAME)) {
+                    db.createObjectStore(Cookies.IDB_ST_NAME);
+                }
+            };
+        });
+    }
+
+    static parse(url, header) {
+        const parts = header
+            .split(';')
+            .map(part => part.trim());
+        const [
+            name, value
+        ] = parts[0].split('=');
+
+        const cookie = {
+            name:     name.trim(),
+            value:    value ? value.trim() : '',
+            domain:   new URL(url).hostname,
+            path:     '/',
+            expires:  null,
+            secure:   false,
+            httpOnly: false
+        };
+
+        for (let i = 1; i < parts.length; i++) {
+            const [
+                name, value
+            ] = parts[i].split('=');
+            const attr = name.toLowerCase();
+
+            if (attr === 'path' && value) {
+                cookie.path =
+                    value.trim();
+            } else if (attr === 'domain' && value) {
+                cookie.domain =
+                    value.trim().replace(/^\./, '');
+            } else if (attr === 'expires' && value) {
+                cookie.expires =
+                    new Date(value.trim()).getTime();
+            } else if (attr === 'max-age' && value) {
+                cookie.expires = 
+                    Date.now() + 
+                    (parseInt(value.trim()) * 1000);
+            } else if (attr === 'secure') {
+                cookie.secure = true;
+            } else if (attr === 'httponly') {
+                cookie.httpOnly = true;
+            }
+        }
+
+        return cookie;
+    }
+
+    static async set(location, header) {
+        const cookie =
+            Cookies.parse(location, header);
+        const db = await Cookies.open();
+        const key =
+            `${cookie.domain}${cookie.path}${cookie.name}`;
+        
+        const transaction = db.transaction(
+            [Cookies.IDB_ST_NAME], 'readwrite');
+        const store = transaction
+            .objectStore(Cookies.IDB_ST_NAME);
+        store.put(cookie, key);
+        db.close();
+    }
+
+    static async get(location) {
+        const db = await Cookies.open();
+        let store;
+
+        try {
+            const transaction =
+                db.transaction(
+                    [Cookies.IDB_ST_NAME], 'readonly');
+            store = transaction
+                .objectStore(Cookies.IDB_ST_NAME);
+        } catch (e) {
+            return;
+        }
+
+        return new Promise((resolve) => {
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const url = new URL(location);
+                const cookies = [];
+                const now = Date.now();
+                
+                for (const cookie of request.result) {
+                    if (cookie.expires &&
+                        cookie.expires < now) {
+                        continue;
+                    }
+
+                    if (cookie.secure &&
+                        url.protocol !== 'https:') {
+                        continue;
+                    }
+
+                    if (!url.hostname.endsWith(cookie.domain)) {
+                        continue;
+                    }
+                    
+                    if (cookie.path && 
+                        !url.pathname.startsWith(cookie.path)) {
+                        continue;
+                    }
+
+                    cookies.push(`${cookie.name}=${cookie.value}`);
+                }
+
+                db.close();
+                resolve(cookies);
+            };
+        });
+    }
+}
+
 async function handleResponse(promise, request, cache) {
     const result = await promise;
+    const cookie = result.response.headers["set-cookie"] ||
+                    result.response.headers["Set-Cookie"];
+
     const response = new Response(result.response.body, { 
         status:     result.response.status.code,
         statusText: result.response.status.text,
@@ -109,6 +245,10 @@ async function handleResponse(promise, request, cache) {
     if (request.method === "GET") {
         await cache.put(
             request, response.clone());
+    }
+
+    if (cookie) {
+        Cookies.set(request.url, cookie);
     }
 
     return response;
@@ -141,14 +281,20 @@ async function handleRequestConditional(condition, channel, request, cache, cach
     const id = crypto.randomUUID();
     const promise = new Promise(
         resolve => pending.set(id, resolve));
+    const cookies = await Cookies.get(request.url);
 
     let head = 
         `${request.method} ${request.url}\r\n` +
         `If-Modified-Since: ${condition}\r\n`;
 
+    if (cookies) {
+        head += `Cookie: ${cookies.join('; ')}\r\n`;
+    }
+
     if (request.headers) {
         for (const [key, value] of request.headers.entries()) {
-            if (key.toLowerCase() !== 'if-modified-since') {
+            if ((key.toLowerCase() !== 'if-modified-since') &&
+                (key.toLowerCase() !== 'cookie')) {
                 head += `${key}: ${value}\r\n`;
             }
         }
@@ -178,11 +324,20 @@ async function handleRequestUnconditional(channel, request, cache) {
     const id = crypto.randomUUID();
     const promise = new Promise(
         resolve => pending.set(id, resolve));
+    const cookies = await Cookies.get(request.url);
 
-    let head = `${request.method} ${request.url}\r\n`;
+    let head = 
+        `${request.method} ${request.url}\r\n`;
+
+    if (cookies) {
+        head += `Cookie: ${cookies.join('; ')}\r\n`;
+    }
+
     if (request.headers) {
         for (const [key, value] of request.headers.entries()) {
-            head += `${key}: ${value}\r\n`;
+            if (key.toLowerCase() !== 'cookie') {
+                head += `${key}: ${value}\r\n`;
+            }
         }
     }
     head += '\r\n';

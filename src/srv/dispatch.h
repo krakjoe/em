@@ -82,6 +82,7 @@ typedef enum _em_dispatch_selector_t {
 } em_dispatch_selector_t;
 
 void em_dispatch_header(em_dispatch_context_t* context, const char* format, ...);
+char* em_dispatch_find(em_dispatch_context_t* context, const char* search);
 
 size_t em_dispatch_response(em_dispatch_context_t* context, em_dispatch_selector_t selector, const char* buffer, size_t length);
 
