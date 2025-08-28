@@ -44,7 +44,6 @@ static pcre2_code* __em_url_pattern_rel__; /* relative uri */
     }                                                           \
 } while(0)
 
-#if 0
 static inline void em_url_debug(const char* url, em_url_t* parsed) {
     fprintf(stderr,
         "[url] em_url_parse(%s) = %s:\n"
@@ -66,7 +65,6 @@ static inline void em_url_debug(const char* url, em_url_t* parsed) {
         parsed->query      ? parsed->query :      "(null)",
         parsed->fragment   ? parsed->fragment :   "(null)");
 }
-#endif
 
 static char* em_url_parse_uri(em_url_t* parsed) {
     char* uri = malloc(
@@ -334,9 +332,8 @@ bool em_url_parse(struct _em_dispatch_context_t* context, const char* url, em_ur
 
     em_url_parse_complete(context, parsed);
 
-#if 0
     em_url_debug(url, parsed);
-#endif
+
 
     return true;
 }
