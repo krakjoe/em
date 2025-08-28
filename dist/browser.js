@@ -72,7 +72,10 @@ class Browser {
                                 0, window.location.protocol.length - 1),
                             SERVER_HOSTNAME: window.location.hostname,
                             SERVER_PORT:     window.location.port ?
-                                                window.location.port : 80,
+                                                window.location.port :
+                                                    window.location.protocol
+                                                        .includes("https") ?
+                                                            443 : 80,
                             DOCUMENT_ROOT: this.droot,
                             VIRTUAL_ROOT:  this.vroot
                         })),
