@@ -104,7 +104,11 @@ export CXX=em++
 export AR=emar
 export RANLIB=emranlib
 export STRIP=emstrip
-export CFLAGS=-DEMSCRIPTEN -DHAVE_REALLOCARRAY -O2 -DPHP_GLOB_BRACE=0
+export CFLAGS=\
+	-DEMSCRIPTEN \
+	-O$(EM_EMSDK_OPTLEVEL) \
+	-DHAVE_REALLOCARRAY \
+	-DPHP_GLOB_BRACE=0
 export EXTRA_LIBS=$(EM_SYS_LDFLAGS)
 ########################################################################
 # Super duper private, probably stuff will break if caller sets these
