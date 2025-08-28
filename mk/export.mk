@@ -98,7 +98,6 @@ endef
 # EM_EXPORT_ADD_BLACKLIST
 ########################################################################
 EM_EXPORT_BLACKLIST = [     \
-	"em_buffer_join",       \
 	"em_buffer_write",      \
 	"em_buffer_clear",      \
 	"php_request_startup",  \

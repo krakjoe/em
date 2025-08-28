@@ -33,6 +33,7 @@ export EM_PHP_CFLAGS     += -I$(EM_PHP_DIR)
 # Public, but unlikely to want to set these
 ########################################################################
 export EM_EMSDK_MEMORY   ?= 128MB
+export EM_EMSDK_OPTLEVEL ?= 3
 export EM_EMSDK_CFLAGS   ?=
 export EM_EMSDK_LDFLAGS  ?=
 ########################################################################
@@ -103,7 +104,7 @@ export CXX=em++
 export AR=emar
 export RANLIB=emranlib
 export STRIP=emstrip
-export CFLAGS=-DEMSCRIPTEN -DHAVE_REALLOCARRAY -O2 -DPHP_GLOB_BRACE=0
+export CFLAGS=-DEMSCRIPTEN -DHAVE_REALLOCARRAY -DPHP_GLOB_BRACE=0
 export EXTRA_LIBS=$(EM_SYS_LDFLAGS)
 ########################################################################
 # Super duper private, probably stuff will break if caller sets these
@@ -367,7 +368,7 @@ build: $(EM_PHP_DIR)/.libs/libphp.a
 
 bin: $(EM_API_LIB) $(EM_MOD_LIB) $(EM_RECIPE_LINK_RULES) $(EM_RECIPE_LINK_OBJECTS) $(EM_PHP_DIR)/.libs/libphp.a
 	$(LIBTOOL) --silent --preserve-dup-deps --mode=link --tag=CC \
-	$(CC) -o $(EM_ROOT_DIR)/php-em.js \
+	$(CC) -O$(EM_EMSDK_OPTLEVEL) -o $(EM_ROOT_DIR)/php-em.js \
 		--post-js=$(EM_SRC_DIR)/stub.js $(EM_RECIPE_LINK_OBJECTS) \
 		-s EXPORTED_FUNCTIONS='$(EM_EXPORT_FUNCTIONS)' \
 		-s EXPORTED_RUNTIME_METHODS='$(EM_EXPORT_METHODS)' \
