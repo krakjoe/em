@@ -60,6 +60,8 @@ ssize_t EMSCRIPTEN_KEEPALIVE
     em_vfs_get_length(const char* path);
 void EMSCRIPTEN_KEEPALIVE em_vfs_reset(void);
 
+em_vfs_node_t* em_vfs_get_node(const char* path);
+
 zend_result em_vfs_stat_path(em_vfs_path_t* vpath, php_stream_statbuf *ssb, bool link);
 em_vfs_node_t* em_vfs_resolve(em_vfs_path_t* vpath, bool make);
 

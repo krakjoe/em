@@ -1,9 +1,28 @@
 const encoder = new TextEncoder("utf-8");
 const pending = new Map();
 
-let boot = null;
+let uuid    = null;
+let boot    = null;
 let channel = null;
-let uuid = null;
+
+function initializeChannel() {
+    channel = new BroadcastChannel(
+        `em-browser:${uuid}`);
+    channel.addEventListener('message', async (event) => {
+        if (event.data.type === 'CLIENT_RESPONSE') {
+            const resolve = pending.get(event.data.id);
+            if (resolve) {
+                pending.delete(
+                    event.data.id);
+                resolve(event.data);
+            } else {
+                console.warn(
+                    `[worker:${uuid}] Nothing Pending for ${event.data.id}`);
+            }
+        }
+    });
+    return channel;
+}
 
 class State {
     static IDB_DB_NAME    = "em-worker-state";
@@ -79,36 +98,112 @@ class State {
     }
 }
 
-function initializeChannel() {
-    channel = new BroadcastChannel(
-        `em-browser:${uuid}`);
-    channel.addEventListener('message', async (event) => {
-        if (event.data.type === 'CLIENT_RESPONSE') {
-            const resolve = pending.get(event.data.id);
-            if (resolve) {
-                pending.delete(
-                    event.data.id);
-                resolve(event.data);
-            } else {
-                console.warn(
-                    `[worker:${uuid}] Nothing Pending for ${event.data.id}`);
-            }
-        }
-    });
-    return channel;
-}
-
-async function resolveResponse(promise, event) {
+async function handleResponse(promise, request, cache) {
     const result = await promise;
-    return new Response(result.response.body, { 
+    const response = new Response(result.response.body, { 
         status:     result.response.status.code,
         statusText: result.response.status.text,
         headers: new Headers(result.response.headers)
     });
+
+    if (request.method === "GET") {
+        await cache.put(
+            request, response.clone());
+    }
+
+    return response;
 }
 
-self.addEventListener('fetch', async (event) => {
-    const url = new URL(event.request.url, self.location.url);
+async function handleRequest(channel, request) {
+    const cache  = await caches.open(`em-cache:${uuid}`);
+    const cached = await cache.match(request);
+
+    if (cached) {
+        const expires = cached.headers.get('Expires');
+        if (expires) {
+            const expiresDate = new Date(expires);
+            if (Date.now() < expiresDate.getTime()) {
+                return cached;
+            }
+        }
+
+        const condition = cached.headers.get('Last-Modified');
+        if (condition) {
+            return handleRequestConditional(
+                condition, channel, request, cache, cached);
+        }
+    }
+
+    return handleRequestUnconditional(channel, request, cache);
+}
+
+async function handleRequestConditional(condition, channel, request, cache, cached) {
+    const id = crypto.randomUUID();
+    const promise = new Promise(
+        resolve => pending.set(id, resolve));
+
+    let head = 
+        `${request.method} ${request.url}\r\n` +
+        `If-Modified-Since: ${condition}\r\n`;
+
+    if (request.headers) {
+        for (const [key, value] of request.headers.entries()) {
+            if (key.toLowerCase() !== 'if-modified-since') {
+                head += `${key}: ${value}\r\n`;
+            }
+        }
+    }
+    head += '\r\n';
+
+    channel.postMessage({
+        type: 'CLIENT_REQUEST',
+        id: id,
+        method: request.method,
+        url: request.url,
+        head: encoder.encode(head),
+        body: new Uint8Array(
+            await request.arrayBuffer()),
+    });
+
+    const result = await promise;
+
+    if (result.response.status.code === 304) {
+        return cached;
+    }
+
+    return handleResponse(promise, request, cache);
+}
+
+async function handleRequestUnconditional(channel, request, cache) {
+    const id = crypto.randomUUID();
+    const promise = new Promise(
+        resolve => pending.set(id, resolve));
+
+    let head = `${request.method} ${request.url}\r\n`;
+    if (request.headers) {
+        for (const [key, value] of request.headers.entries()) {
+            head += `${key}: ${value}\r\n`;
+        }
+    }
+    head += '\r\n';
+
+    channel.postMessage({
+        type: 'CLIENT_REQUEST',
+        id: id,
+        method: request.method,
+        url: request.url,
+        head: encoder.encode(head),
+        body: new Uint8Array(
+            await request.arrayBuffer()),
+    });
+
+    return handleResponse(promise, request, cache);
+}
+
+async function handleFetch(event) {
+    const url = new URL(
+        event.request.url,
+        self.location.url);
 
     if (url.origin != self.location.origin) {
         return;
@@ -142,34 +237,11 @@ self.addEventListener('fetch', async (event) => {
             return fetch(event.request);
         }
 
-        const id = crypto.randomUUID();
-        const promise = new Promise(
-            resolve => pending.set(id, resolve));
-
-        let head = `${event.request.method} ${event.request.url}\r\n`;
-        if (event.request.headers) {
-            for (const [key, value] of event.request.headers.entries()) {
-                head += `${key}: ${value}\r\n`;
-            }
-        }
-        head += '\r\n';
-
-        const body = await event.request.arrayBuffer();
-
-        channel.postMessage({
-            type:    'CLIENT_REQUEST',
-            id:      id,
-            method:  event.request.method,
-            url:     event.request.url,
-            head:    encoder.encode(head),
-            body:    new Uint8Array(body),
-        });
-
-        return resolveResponse(promise, event);
+        return handleRequest(channel, event.request);
     })());
-});
+}
 
-self.addEventListener('message', async (event) => {    
+async function handleMessage(event) {
     switch (event.data.type) {
         case 'SKIP_WAITING':
             self.skipWaiting();
@@ -205,4 +277,7 @@ self.addEventListener('message', async (event) => {
             });
             return;
     }
-});
+}
+
+self.addEventListener('fetch',   handleFetch);
+self.addEventListener('message', handleMessage);

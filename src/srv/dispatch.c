@@ -27,12 +27,33 @@
 #include <ext/standard/php_var.h>
 #include <ext/json/php_json.h>
 
+#define EM_DISPATCH_TIME_FMT_IN  "%a, %d %b %Y %H:%M:%S"
+#define EM_DISPATCH_TIME_FMT_OUT EM_DISPATCH_TIME_FMT_IN " GMT"
+
 void em_dispatch_file(em_dispatch_context_t* context);
 void em_dispatch_script(em_dispatch_context_t* context);
 void em_dispatch_code(em_dispatch_context_t* context);
 void em_dispatch_api(em_dispatch_context_t* context);
 void em_dispatch_exception(em_dispatch_context_t* context);
 void em_dispatch_error(em_dispatch_context_t* context);
+
+typedef struct _em_dispatch_t {
+    struct {
+        const char* type;
+        size_t length;
+    } mime;
+    em_dispatch_handler_t handler;
+} em_dispatch_t;
+
+em_dispatch_t __em_dispatch_table__[] = {
+    { ZEND_STRL("application/x-em-api"),       em_dispatch_api },
+    { ZEND_STRL("application/x-em-file"),      em_dispatch_file },
+    { ZEND_STRL("application/x-em-script"),    em_dispatch_script }, 
+    { ZEND_STRL("application/x-em-error"),     em_dispatch_error },
+    { ZEND_STRL("application/x-em-exception"), em_dispatch_exception },
+
+    { { NULL, 0 }, NULL },
+};
 
 typedef struct _em_dispatch_header_scan_t {
     struct {
@@ -85,13 +106,24 @@ static zend_always_inline const char* em_dispatch_mime(sapi_request_info* info, 
     return fallback;
 }
 
-typedef struct _em_dispatch_t {
-    struct {
-        const char* type;
-        size_t length;
-    } mime;
-    em_dispatch_handler_t handler;
-} em_dispatch_t;
+char* em_dispatch_find(em_dispatch_context_t* context, const char* search) {
+    zend_llist_position position;
+    em_dispatch_header_t* find = zend_llist_get_first_ex(
+        &context->headers.request, &position);
+
+    if (!find) {
+        return NULL;
+    }
+
+    do {
+        if (strcasestr(find->key.data, search)) {
+            return find->value.data;
+        }
+    } while ((find = zend_llist_get_next_ex(
+        &context->headers.request, &position)));
+
+    return NULL;
+}
 
 void em_dispatch_header(em_dispatch_context_t* context, const char* format, ...) {
     va_list args;
@@ -180,7 +212,26 @@ static zend_always_inline void em_dispatch_nocache(em_dispatch_context_t* contex
         "Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate");
     em_dispatch_header(context, "Pragma", "no-cache");
     em_dispatch_header(context, "Expires: 0");
-    em_dispatch_header(context, "Connection: close");
+}
+
+static zend_always_inline void em_dispatch_time(em_dispatch_context_t* context, const char* name, time_t time) {
+    struct tm* tmi = gmtime((time_t*)&time);
+    if (!tmi) {
+        return;
+    }
+
+    char format[32];
+    strftime(format, sizeof(format),
+        EM_DISPATCH_TIME_FMT_OUT, tmi);
+    em_dispatch_header(context, "%s: %s", name, format);
+}
+
+static zend_always_inline void em_dispatch_cache(em_dispatch_context_t* context, em_vfs_node_t* node, uint64_t ttl) {
+    time_t modified = node->data.file.modified,
+           expires  = modified + ttl;
+
+    em_dispatch_time(context, "Last-Modified", modified);
+    em_dispatch_time(context, "Expires",       expires);
 }
 
 static zend_always_inline int em_dispatch_readline(em_buffer_t *buffer, const char* format, ...) {
@@ -588,21 +639,53 @@ void em_dispatch_api(em_dispatch_context_t* context) {
     em_dispatch_header(context, "Content-Type: text/plain");
 }
 
+static zend_always_inline bool em_dispatch_required(em_dispatch_context_t* context, em_vfs_node_t* node) {
+    char* condition = em_dispatch_find(
+        context, "if-modified-since");
+
+    if (!condition) {
+        return true;
+    }
+
+    struct tm tmi = {0};
+    char* parsed = strptime(condition,
+        EM_DISPATCH_TIME_FMT_IN, &tmi);
+
+    if (!parsed || (*parsed != '\0')) {
+        fprintf(stderr,
+            "[dispatch] malformed if-modified-since for %s\n",
+            node->name);
+        return true;
+    }
+
+    time_t since = timegm(&tmi);
+
+    if (!since) {
+        fprintf(stderr,
+            "[dispatch] cannot make gmtime from if-modified-since for %s\n",
+            node->name);
+        return true;
+    }
+
+    if (node->data.file.modified > since) {
+        return true;
+    }
+
+    em_dispatch_header(context,
+        "Status: 304 Not Modified");
+    return false;
+}
+
 void em_dispatch_file(em_dispatch_context_t* context) {
+    em_vfs_node_t* node =
+        em_vfs_get_node(context->info->path_translated);
 
-    const char* address =
-        em_vfs_get_address(context->info->path_translated);
-
-    if (!address) {
+    if (!node) {
         em_dispatch_error(context);
         return;
     }
 
-    ssize_t length =
-        em_vfs_get_length(context->info->path_translated);
-
-    if (length < 0) {
-        em_dispatch_exception(context);
+    if (!em_dispatch_required(context, node)) {
         return;
     }
 
@@ -610,10 +693,14 @@ void em_dispatch_file(em_dispatch_context_t* context) {
     em_dispatch_header(context, "Content-Type: %s",
         em_dispatch_mime(context->info,
             "application/octet-stream"));
-    em_dispatch_header(context, "Content-Length: %zu", length);
-    em_dispatch_nocache(context);
+    em_dispatch_header(context,
+        "Content-Length: %zu",
+        node->data.file.size);
+    em_dispatch_cache(context, node, 86400);
     em_dispatch_response(context,
-        EM_DISPATCH_BODY, address, length);
+        EM_DISPATCH_BODY,
+        node->data.file.content,
+        node->data.file.size);
     em_mutators_mutate(context);
 }
 
@@ -656,16 +743,6 @@ void em_dispatch_code(em_dispatch_context_t* context) {
     em_execute(ops);
     em_mutators_mutate(context);
 }
-
-em_dispatch_t __em_dispatch_table__[] = {
-    { ZEND_STRL("application/x-em-api"),       em_dispatch_api },
-    { ZEND_STRL("application/x-em-file"),      em_dispatch_file },
-    { ZEND_STRL("application/x-em-script"),    em_dispatch_script }, 
-    { ZEND_STRL("application/x-em-error"),     em_dispatch_error },
-    { ZEND_STRL("application/x-em-exception"), em_dispatch_exception },
-
-    { { NULL, 0 }, NULL },
-};
 
 static em_dispatch_handler_t em_dispatch_select(const char* mime, sapi_request_info* info) {
     if (mime != NULL) {

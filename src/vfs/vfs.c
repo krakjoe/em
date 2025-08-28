@@ -622,8 +622,7 @@ bool EMSCRIPTEN_KEEPALIVE
     return true;
 }
 
-void* EMSCRIPTEN_KEEPALIVE
-    em_vfs_get_address(const char* path) {
+em_vfs_node_t* em_vfs_get_node(const char* path) {
     em_vfs_path_t* vpath = em_vfs_mkpath(path, false);
 
     if (!vpath) {
@@ -644,6 +643,13 @@ void* EMSCRIPTEN_KEEPALIVE
             vpath->filename, strlen(vpath->filename));
     em_vfs_path_release(vpath);
 
+    return node;
+}
+
+void* EMSCRIPTEN_KEEPALIVE
+    em_vfs_get_address(const char* path) {
+    em_vfs_node_t* node = em_vfs_get_node(path);
+
     if (!node) {
         return NULL;
     }
@@ -657,25 +663,7 @@ void* EMSCRIPTEN_KEEPALIVE
 
 ssize_t EMSCRIPTEN_KEEPALIVE
     em_vfs_get_length(const char* path) {
-        em_vfs_path_t* vpath = em_vfs_mkpath(path, false);
-
-    if (!vpath) {
-        return -1;
-    }
-
-    em_vfs_node_t* parent =
-        em_vfs_resolve(vpath, false);
-
-    if (!parent) {
-        em_vfs_path_release(vpath);
-        return -1;
-    }
-
-    em_vfs_node_t* node = (em_vfs_node_t*)
-        zend_hash_str_find_ptr(
-            &parent->data.dir.children,
-            vpath->filename, strlen(vpath->filename));
-    em_vfs_path_release(vpath);
+    em_vfs_node_t* node = em_vfs_get_node(path);
 
     if (!node) {
         return -1;
