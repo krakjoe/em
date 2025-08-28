@@ -232,7 +232,15 @@ Module.dispatch = async function(env, head, body) {
     Module.HEAPU8[request.body + body.byteLength] = 0;
 
     let context = await new Promise((resolve, reject) => {
+        let callback;
+
         const reaper = (address) => {
+            Module.removeFunction(callback);
+
+            Module._free(request.env);
+            Module._free(request.head);
+            Module._free(request.body);
+
             if (address > 0) {
                 resolve(address);
             } else {
@@ -240,30 +248,22 @@ Module.dispatch = async function(env, head, body) {
             }
         };
 
-        const callback =
+        callback =
             Module.addFunction(reaper, "vi");
 
-        try {
-            Module.ccall(
-                'em_run_request',
-                'void',
-                [   'number','number',    /* const char* env,  size_t elen */
-                    'number', 'number',   /* const char* head, size_t hlen */
-                    'number', 'number',    /* const char* body, size_t blen */
-                    'function'
-                ], [ 
-                    request.env,  env.byteLength,
-                    request.head, head.byteLength,
-                    request.body, body.byteLength,
-                    callback
-                ], { async: true });
-        } finally {
-            Module._free(request.env);
-            Module._free(request.head);
-            Module._free(request.body);
-
-            Module.removeFunction(callback);
-        }
+        Module.ccall(
+            'em_run_request',
+            'void',
+            [   'number','number',    /* const char* env,  size_t elen */
+                'number', 'number',   /* const char* head, size_t hlen */
+                'number', 'number',    /* const char* body, size_t blen */
+                'function'
+            ], [ 
+                request.env,  env.byteLength,
+                request.head, head.byteLength,
+                request.body, body.byteLength,
+                callback
+            ], { async: true });
     });
 
     // check for errors
@@ -361,7 +361,11 @@ Module.include = async function(script, output) {
     }));
 
     let context = await new Promise((resolve, reject) => {
+        let callback;
+
         const reaper = (address) => {
+            Module.removeFunction(callback);
+
             if (address > 0) {
                 resolve(address);
             } else {
@@ -369,18 +373,13 @@ Module.include = async function(script, output) {
             }
         };
 
-        const callback =
-            Module.addFunction(reaper, "vi");
+        callback = Module.addFunction(reaper, "vi");
 
-        try {
-            Module.ccall(
-                'em_run_script',
-                'void',
-                [ 'string', 'function' ],
-                [  script,   callback  ], { async: true });
-        } finally {
-            Module.removeFunction(callback);
-        }
+        Module.ccall(
+            'em_run_script',
+            'void',
+            [ 'string', 'function' ],
+            [  script,   callback  ], { async: true });
     });
 
     // check for errors
@@ -538,7 +537,11 @@ Module.invoke = async function(input, output = undefined) {
     }));
 
     let context = await new Promise((resolve, reject) => {
+        let callback;
+
         const reaper = (address) => {
+            Module.removeFunction(callback);
+
             if (address > 0) {
                 resolve(address);
             } else {
@@ -546,18 +549,14 @@ Module.invoke = async function(input, output = undefined) {
             }
         };
 
-        const callback =
+        callback =
             Module.addFunction(reaper, "vi");
 
-        try {
-            Module.ccall(
-                'em_run_string',
-                'void',
-                ['string', 'number', 'function'],
-                [ code.value, code.length, callback ], { async: true });
-        } finally {
-            Module.removeFunction(callback);
-        }
+        Module.ccall(
+            'em_run_string',
+            'void',
+            ['string', 'number', 'function'],
+            [ code.value, code.length, callback ], { async: true });
     });
 
     // check for errors

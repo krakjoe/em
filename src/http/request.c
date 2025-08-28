@@ -262,10 +262,9 @@ EM_JS(int, em_http_request_start, (
     };
 
     xhr.onerror = function() {
+        
         Module.ccall('em_http_request_error', null, ['number'], [id]);
     };
-
-
 
     // Prepare and send body
     let sendData = null;
