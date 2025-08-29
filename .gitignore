@@ -46,6 +46,7 @@ dist/node_modules
 dist/latest
 dist/*.bin
 dist/composer*
+dist/package-lock.json
 
 # Ignore libtool object files and dependency files everywhere
 **/*.lo
