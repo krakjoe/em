@@ -47,6 +47,11 @@ extern void em_shm_shutdown(void);
 extern void em_env_startup(void);
 extern void em_env_shutdown(void);
 
+extern void em_ucontext_startup(void);
+extern void em_ucontext_activate(void);
+extern void em_ucontext_deactivate(void);
+extern void em_ucontext_shutdown(void);
+
 extern sapi_module_struct em_sapi_module;
 
 #if PHP_VERSION_ID >= 80500
@@ -173,6 +178,7 @@ static zend_always_inline zend_result
     em_mutators_activate();
     em_http_activate();
     em_vfs_activate();
+    em_ucontext_activate();
 
     EG(full_tables_cleanup) = 1;
 
@@ -285,6 +291,7 @@ void em_execute(zend_op_array* ops) {
 }
 
 static zend_always_inline void em_deactivate(void) {
+    em_ucontext_deactivate();
     em_vfs_deactivate();
     em_http_deactivate();
     em_mutators_deactivate();
@@ -306,6 +313,7 @@ int EMSCRIPTEN_KEEPALIVE em_startup(void) {
 #endif
 
     zend_signal_startup();
+    em_ucontext_startup();
     em_env_startup();
     em_vfs_startup();
 
@@ -481,6 +489,7 @@ void EMSCRIPTEN_KEEPALIVE em_shutdown(void) {
 
     em_vfs_shutdown();
     em_env_shutdown();
+    em_ucontext_shutdown();
 
 #ifdef ZTS
     tsrm_shutdown();
