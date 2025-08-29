@@ -198,6 +198,7 @@ em_http_request_t em_http_request_create(const char* url, php_stream_context* co
     return request;
 }
 
+#ifdef __EMSCRIPTEN__
 EM_JS(int, em_http_request_start, (
     int id,
     uint32_t timeout,
@@ -278,6 +279,7 @@ EM_JS(int, em_http_request_start, (
     xhr.send(sendData);
     return 1; // Started successfully
 });
+#endif
 
 void EMSCRIPTEN_KEEPALIVE em_http_request_response(
     int id, int status, uintptr_t buffer, size_t length) {
