@@ -254,6 +254,7 @@ window.navigateBrowser = async function(container, toUrl) {
 window.updateBrowserContainer = async function(container, tab) {
     if (tab.type != "browser") {
         container.style.display = "none";
+        window.showOutput();
         return;
     }
 
@@ -272,5 +273,6 @@ window.updateBrowserContainer = async function(container, tab) {
             tab.history[tab.historyIndex]);
     }
 
-    container.style.display = "block";
+    window.hideOutput();
+    container.style.display = "flex";
 };

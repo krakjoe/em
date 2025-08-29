@@ -33,6 +33,7 @@ const tabScrollRightButton = document.querySelector('.tab-nav-button.right');
 
 const phpVersionSelect = document.getElementById('phpVersion');
 const runButton = document.getElementById('runButton');
+const toggleOutputButton = document.getElementById('toggleOutput');
 const clearOutputButton = document.getElementById('clearOutput');
 const resetVFSButton = document.getElementById('resetVFS');
 const explorerHeader = document.querySelector('.explorer-header');
@@ -44,6 +45,7 @@ const fileTree = document.getElementById('fileTree');
 const currentFileElement = document.getElementById('currentFile');
 const contextMenu = document.getElementById('contextMenu');
 const statusBar = document.getElementById('statusBar');
+const outputPanel = document.getElementById('output-panel');
 const output = document.getElementById('output');
 const outputStatus = document.getElementById('outputStatus');
 const previewButton = document.getElementById('previewButton');
@@ -1185,6 +1187,7 @@ function initializeEventHandlers() {
     phpVersionSelect.addEventListener('change', switchPHPVersion);
     runButton.addEventListener('click', runCode);
     clearOutputButton.addEventListener('click', clearOutput);
+    toggleOutputButton.addEventListener('click', toggleOutput);
     resetVFSButton.addEventListener('click', () => {
         resetVFS();
         refreshFileTree();
@@ -1254,6 +1257,15 @@ function initializeEventHandlers() {
         e.stopPropagation();
         toggleDirectory(rootItem);
     });
+
+    window.addEventListener('keydown', function(event) {
+        if (event.ctrlKey &&
+            event.altKey  &&
+            event.key.toLowerCase() === 'o') {
+            event.preventDefault();
+            toggleOutput();
+        }
+    });
 }
 
 function createNewTab() {
@@ -1322,6 +1334,22 @@ function loadDemo() {
         } finally {
             demoSelect.value = '';
         }
+    }
+}
+
+function hideOutput() {
+    outputPanel.style.display = "none";
+}
+
+function showOutput() {
+    outputPanel.style.display = "";
+}
+
+function toggleOutput() {
+    if (outputPanel.style.display === "none") {
+        showOutput();
+    } else {
+        hideOutput();
     }
 }
 
@@ -1783,6 +1811,9 @@ async function runCode() {
         }
         runButton.disabled = true;
         updateStatus(`Running: ${currentOpenTab.path}`, 'loading');
+        if (outputPanel.style.display == "none") {
+            showOutput();
+        }
         outputStatus.textContent = 'Running...';
         try {
             const result = await
@@ -1803,6 +1834,9 @@ async function runCode() {
         
         runButton.disabled = true;
         updateStatus('Running code...', 'loading');
+        if (outputPanel.style.display == "none") {
+            showOutput();
+        }
         outputStatus.textContent = 'Running...';
         try {
             await Module.invoke(
@@ -1926,6 +1960,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadPHPRuntime();
 });
 
-window.openTabs = openTabs;
+window.openTabs      = openTabs;
 window.switchTabView = switchTabView;
-window.Modal = modal;
+
+window.toggleOutput  = toggleOutput;
+window.showOutput    = showOutput;
+window.hideOutput    = hideOutput;
+
+window.Modal         = modal;
