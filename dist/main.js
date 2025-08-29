@@ -35,6 +35,8 @@ const phpVersionSelect = document.getElementById('phpVersion');
 const runButton = document.getElementById('runButton');
 const toggleOutputButton = document.getElementById('toggleOutput');
 const clearOutputButton = document.getElementById('clearOutput');
+const vfsContainer = document.getElementById('file-explorer');
+const toggleVFSButton = document.getElementById('toggleVFS');
 const resetVFSButton = document.getElementById('resetVFS');
 const explorerHeader = document.querySelector('.explorer-header');
 const newFileButton = document.getElementById('newFile');
@@ -52,6 +54,22 @@ const previewButton = document.getElementById('previewButton');
 const configurationButton = document.getElementById('configurationButton');
 const editorPanel = document.getElementById('editorPanel') || document.querySelector('.editor-panel') || document.getElementById('editor')?.parentElement;
 const browserContainer = document.getElementById('browser-container');
+
+function showVFS() {
+    vfsContainer.style.display = "flex";
+}
+
+function hideVFS() {
+    vfsContainer.style.display = "none";
+}
+
+function toggleVFS() {
+    if (vfsContainer.style.display == "none") {
+        showVFS();
+    } else {
+        hideVFS();
+    }
+}
 
 function resetVFS() {
     if (!isReady || !Module || !Module.vfs) {
@@ -1192,6 +1210,7 @@ function initializeEventHandlers() {
         resetVFS();
         refreshFileTree();
     });
+    toggleVFSButton.addEventListener('click', toggleVFS);
     demoSelect.addEventListener('change', loadDemo);
     newFileButton.addEventListener('click', () => {
         createFile();
@@ -1264,6 +1283,11 @@ function initializeEventHandlers() {
             event.key.toLowerCase() === 'o') {
             event.preventDefault();
             toggleOutput();
+        } else if (event.ctrlKey &&
+            event.altKey  &&
+            event.key.toLowerCase() === 'v') {
+            event.preventDefault();
+            toggleVFS();
         }
     });
 }
