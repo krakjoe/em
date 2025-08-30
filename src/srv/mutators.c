@@ -23,7 +23,8 @@
 
 #include <zend_smart_str.h>
 
-static pcre2_code* __em_mutators_html_pattern__;
+static pcre2_code* __em_mutators_tags_pattern__;
+static pcre2_code* __em_mutators_attribute_pattern__;
 
 char* em_mutators_header(em_dispatch_context_t* context, const char* search) {
     zend_llist_position position;
@@ -99,95 +100,148 @@ static bool em_mutators_html(em_dispatch_context_t* context) {
         return false;
     }
 
-    pcre2_match_data *matches =
+    pcre2_match_data *tags =
         pcre2_match_data_create_from_pattern(
-            __em_mutators_html_pattern__, NULL);
-    if (!matches) {
+            __em_mutators_tags_pattern__, NULL);
+    pcre2_match_data *attriubute =
+        pcre2_match_data_create_from_pattern(
+            __em_mutators_attribute_pattern__, NULL);
+
+    if (!tags || !attriubute) {
+        if (tags)
+            pcre2_match_data_free(tags);
+        if (attriubute)
+            pcre2_match_data_free(attriubute);
         return false;
     }
 
-    smart_str new_content = {0};
-    size_t last_pos = 0;
-    PCRE2_SIZE offset = 0;
-    int rc;
+    smart_str buffer = {0};
+    size_t tlast = 0;
+    PCRE2_SIZE toffset = 0;
+    int trc, arc;
 
-    while ((rc = pcre2_match(__em_mutators_html_pattern__,
-            (PCRE2_SPTR)
-                context->buffers.response.body.value,
-            (PCRE2_SIZE)
-                context->buffers.response.body.length,
-            offset, 0, matches, NULL)) >= 0) {
-        PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(matches);
-        // ovector[0] = start of full match, ovector[1] = end of full match
-        // ovector[2] = start of group 1, ovector[3] = end of group 1
-        // ovector[4] = start of group 2, ovector[5] = end of group 2
+    em_buffer_t* body = &context->buffers.response.body;
 
-        // Copy content from last_pos to start of match
-        smart_str_appendl(&new_content,
-            context->buffers.response.body.value + last_pos,
-            ovector[0] - last_pos);
+    while ((trc = pcre2_match(__em_mutators_tags_pattern__,
+            (PCRE2_SPTR)body->value, (PCRE2_SIZE)body->length,
+            toffset, 0, tags, NULL)) >= 0) {
 
-        // This is nasty, wasm doesn't like locals ...
-        char attr_name[32];
-        snprintf(attr_name, sizeof(attr_name), "%.*s",
-            (int)(ovector[3] - ovector[2]),
-            context->buffers.response.body.value + ovector[2]);
-        char *attr_value = emalloc(ovector[5] - ovector[4] + 1);
-        memcpy(attr_value,
-            context->buffers.response.body.value + ovector[4],
-            ovector[5] - ovector[4]);
-        attr_value[ovector[5] - ovector[4]] = '\0';
+        PCRE2_SIZE *tovector = pcre2_get_ovector_pointer(tags);
 
-        if (strcasecmp(attr_name, "href")   == 0 ||
-            strcasecmp(attr_name, "src")    == 0 ||
-            strcasecmp(attr_name, "action") == 0) {
-            char *mutated = em_mutators_href(context, attr_value, ovector[5] - ovector[4]);
-            if (mutated) {
-                smart_str_appends(&new_content, attr_name);
-                smart_str_appends(&new_content, "=\"");
-                smart_str_appends(&new_content, mutated);
-                smart_str_appends(&new_content, "\"");
-                efree(mutated);
+        // Copy content before this tag
+        smart_str_appendl(
+            &buffer,
+            body->value + tlast,
+            tovector[0] - tlast);
+
+        // Copy the whole tag to a temporary buffer
+        size_t tlength = tovector[1] - tovector[0];
+        char *tbuffer  = emalloc(tlength + 1);
+        memcpy(
+            tbuffer, 
+            body->value + tovector[0],
+            tlength);
+        tbuffer[tlength] = '\0';
+
+        // Find attributes in the tag buffer and mutate them
+        size_t aoffset = 0, alast = 0;
+        while ((arc = pcre2_match(__em_mutators_attribute_pattern__,
+                (PCRE2_SPTR)tbuffer, (PCRE2_SIZE)tlength,
+                aoffset, 0, attriubute, NULL)) >= 0) {
+
+            PCRE2_SIZE *aovector = pcre2_get_ovector_pointer(attriubute);
+
+            // Copy content before this attribute
+            smart_str_appendl(
+                &buffer,
+                tbuffer + alast,
+                aovector[0] - alast);
+
+            size_t alength = aovector[5] - aovector[4];
+
+            char aname[32];
+            snprintf(aname, sizeof(aname),
+                "%.*s",
+                (int)(aovector[3] - aovector[2]),
+                tbuffer + aovector[2]);
+            char *avalue = emalloc(alength + 1);
+            memcpy(
+                avalue,
+                tbuffer + aovector[4],
+                alength);
+            avalue[alength] = '\0';
+
+            if (strcasecmp(aname, "href")   == 0 ||
+                strcasecmp(aname, "src")    == 0 ||
+                strcasecmp(aname, "action") == 0) {
+                char *mutated = em_mutators_href(context, avalue, alength);
+                if (mutated) {
+                    smart_str_appends(
+                        &buffer, aname);
+                    smart_str_appends(
+                        &buffer, "=\"");
+                    smart_str_appends(
+                        &buffer, mutated);
+                    smart_str_appends(
+                        &buffer, "\"");
+                    efree(mutated);
+                } else {
+                    smart_str_appendl(
+                        &buffer,
+                        tbuffer + aovector[0],
+                        aovector[1] - aovector[0]);
+                }
+                efree(avalue);
             } else {
-                smart_str_appendl(&new_content,
-                    context->buffers.response.body.value + ovector[0],
-                    ovector[1] - ovector[0]);
+                smart_str_appendl(
+                    &buffer, 
+                    tbuffer + aovector[0],
+                    aovector[1] - aovector[0]);
+                efree(avalue);
             }
-            efree(attr_value);
-        } else {
-            smart_str_appendl(&new_content,
-                context->buffers.response.body.value + ovector[0],
-                ovector[1] - ovector[0]);
-            efree(attr_value);
+
+            alast = aovector[1];
+            aoffset = aovector[1];
         }
 
-        last_pos = ovector[1];
-        offset = ovector[1];
+        // Copy remaining part of the tag after last attribute
+        if (alast < tlength) {
+            smart_str_appendl(
+                &buffer,
+                tbuffer + alast,
+                tlength - alast);
+        }
+        efree(tbuffer);
+
+        tlast   = tovector[1];
+        toffset = tovector[1];
     }
 
-    // Copy remaining content after last match
-    if (last_pos < context->buffers.response.body.length) {
-        smart_str_appendl(&new_content,
-            context->buffers.response.body.value  + last_pos,
-            context->buffers.response.body.length - last_pos);
+    // Copy remaining content after last tag
+    if (tlast < body->length) {
+        smart_str_appendl(
+            &buffer,
+            body->value + tlast,
+            body->length - tlast);
     }
 
-    smart_str_0(&new_content);
+    smart_str_0(&buffer);
 
     // Replace output
-    if (new_content.s) {
+    if (buffer.s) {
         em_buffer_clear(&context->buffers.response.body, true);
         em_buffer_write(&context->buffers.response.body,
-            ZSTR_VAL(new_content.s),
-            ZSTR_LEN(new_content.s));
-        smart_str_free(&new_content);
+            ZSTR_VAL(buffer.s),
+            ZSTR_LEN(buffer.s));
+        smart_str_free(&buffer);
     }
+
+    pcre2_match_data_free(tags);
+    pcre2_match_data_free(attriubute);
 
     if (em_mutators_sizeof(context)) {
         em_mutators_length(context);
     }
-
-    pcre2_match_data_free(matches);
 
     return true;
 }
@@ -250,28 +304,47 @@ bool em_mutators_mutate(em_dispatch_context_t* context) {
 }
 
 void em_mutators_startup(void) {
-    PCRE2_SPTR href = (PCRE2_SPTR)
-        "(href|src|action|style)"
-        "\\s*="
+    PCRE2_SPTR tags = (PCRE2_SPTR)
+        "<\\s*"
+        "([a-zA-Z0-9\\-]+)"  /* Group 1: Tag Name*/
+        "([^>]+?)\\s*\\/?>"; /* Group 2: Attributes */
+
+    PCRE2_SPTR attribute = (PCRE2_SPTR)
+        "(href|src|action|style)" /* Group 1: Attribute Name */
+        "\\s*="                   
         "\\s*[\"']?"
-        "(?!data:|\\/\\/)"
-        "([^\"'>\\s]+)"
+        "(?!data:|\\/\\/)"        
+        "([^\"'>\\s]+)"           /* Group 2: Attribute Value */
         "[\"']?";
 
     int code;
     PCRE2_SIZE offset;
 
-    __em_mutators_html_pattern__ =
+    __em_mutators_tags_pattern__ =
         pcre2_compile(
-            href, strlen((char*)href),
+            tags, strlen((char*)tags),
             PCRE2_CASELESS | PCRE2_DOTALL,
             &code, &offset,
             NULL);
 
-    if (!__em_mutators_html_pattern__) {
+    if (!__em_mutators_tags_pattern__) {
         fprintf(stderr,
             "[mutators] failed to compile "
-            "__em_mutators_html_pattern__ %d at %zu\n",
+            "__em_mutators_tags_pattern__ %d at %zu\n",
+            code, offset);
+    }
+
+    __em_mutators_attribute_pattern__ =
+        pcre2_compile(
+            attribute, strlen((char*)attribute),
+            PCRE2_CASELESS | PCRE2_DOTALL,
+            &code, &offset,
+            NULL);
+
+    if (!__em_mutators_attribute_pattern__) {
+        fprintf(stderr,
+            "[mutators] failed to compile "
+            "__em_mutators_attribute_pattern__ %d at %zu\n",
             code, offset);
     }
 }
@@ -285,8 +358,8 @@ void em_mutators_deactivate(void) {
 }
 
 void em_mutators_shutdown(void) {
-    if (__em_mutators_html_pattern__) {
+    if (__em_mutators_attribute_pattern__) {
         pcre2_code_free(
-            __em_mutators_html_pattern__);
+            __em_mutators_attribute_pattern__);
     }
 }

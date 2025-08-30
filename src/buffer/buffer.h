@@ -30,7 +30,8 @@ typedef struct _em_buffer_t {
     char*  token;
 } em_buffer_t;
 
-#define EM_BUFFER_EMPTY (em_buffer_t) {NULL, 0, 0, 0}
+#define EM_BUFFER_EMPTY \
+  (em_buffer_t) {NULL, 0, 0, 0, NULL}
 
 size_t em_buffer_write(em_buffer_t* buffer, const char* buf, size_t len);
 void em_buffer_clear(em_buffer_t* buffer, bool _free);
