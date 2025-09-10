@@ -572,18 +572,44 @@ void em_vfs_startup(void) {
 #endif
 }
 
-void em_vfs_activate(void) {
-    php_unregister_url_stream_wrapper("file");
+void em_vfs_masquerade(bool enabled) {
+    if (enabled) {
+        php_unregister_url_stream_wrapper("file");
+        php_register_url_stream_wrapper_volatile(
+            ZSTR_KNOWN(ZEND_STR_FILE), &em_vfs_wrapper);
+    } else {
+        php_unregister_url_stream_wrapper_volatile(
+            ZSTR_KNOWN(ZEND_STR_FILE));
+    }
+}
+
+void em_vfs_activate_ex(bool masquerading) {
+    if (masquerading) {
+        php_unregister_url_stream_wrapper("file");
+    }
     php_register_url_stream_wrapper("vfs", &em_vfs_wrapper);
-    php_register_url_stream_wrapper_volatile(
-        ZSTR_KNOWN(ZEND_STR_FILE), &em_vfs_wrapper);
+    if (masquerading) {
+        php_register_url_stream_wrapper_volatile(
+            ZSTR_KNOWN(ZEND_STR_FILE), &em_vfs_wrapper);
+    }
+}
+
+void em_vfs_activate(void) {
+    em_vfs_activate_ex(true);
+}
+
+void em_vfs_deactivate_ex(bool masquerading) {
+    if (masquerading) {
+        php_unregister_url_stream_wrapper_volatile(
+            ZSTR_KNOWN(ZEND_STR_FILE));
+    }
+    php_unregister_url_stream_wrapper("vfs");
 }
 
 void em_vfs_deactivate(void) {
-    php_unregister_url_stream_wrapper_volatile(
-        ZSTR_KNOWN(ZEND_STR_FILE));
-    php_unregister_url_stream_wrapper("vfs");
+    em_vfs_deactivate_ex(true);
 }
+
 
 void em_vfs_shutdown(void) {
 #ifdef HAVE_EM_SQLITE_VFS

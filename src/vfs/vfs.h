@@ -42,7 +42,10 @@ typedef struct _em_vfs_abstract_t {
 
 void em_vfs_startup(void);
 void em_vfs_activate(void);
+void em_vfs_activate_ex(bool masquerading);
 void em_vfs_deactivate(void);
+void em_vfs_deactivate_ex(bool masquerading);
+void em_vfs_masquerade(bool enabled);
 void em_vfs_shutdown(void);
 
 bool EMSCRIPTEN_KEEPALIVE
