@@ -20,7 +20,12 @@
 #ifndef HAVE_EM_MEMORY
 #define HAVE_EM_MEMORY
 
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
+
 #include <php.h>
 
 #define EM_VFS_MEMORY_MAGIC   "EMFS1\0"

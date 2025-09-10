@@ -19,7 +19,13 @@
 #ifndef HAVE_EM_ITERATOR
 #define HAVE_EM_ITERATOR
 
+#include <vfs/node.h>
+
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
 
 typedef struct _em_vfs_iterator_t {
     em_vfs_node_t* node;

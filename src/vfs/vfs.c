@@ -16,9 +16,6 @@
   +----------------------------------------------------------------------+
  */
 
-#include <emscripten.h>
-#include <emscripten/heap.h>
-
 #include <php.h>
 
 #ifdef ZTS
@@ -555,9 +552,11 @@ void em_vfs_startup(void) {
         NULL, em_vfs_node_dtor, 1);
     em_vfs_path_startup();
 
+#ifdef __EMSCRIPTEN__
     em_vfs_mkdir("/tmp");
     setenv(
         "TMPDIR", "/tmp", true);
+#endif
 
 #ifdef HAVE_EM_SQLITE_VFS
     em_vfs_mkdir(
@@ -568,7 +567,9 @@ void em_vfs_startup(void) {
     em_sqlite_vfs_register();
 #endif
 
+#ifdef __EMSCRIPTEN__
     chdir("/");
+#endif
 }
 
 void em_vfs_activate(void) {

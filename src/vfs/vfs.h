@@ -18,12 +18,17 @@
 
 #ifndef HAVE_EM_VFS
 #define HAVE_EM_VFS
+
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
 
 #include <php.h>
 
-#include "node.h"
-#include "path.h"
+#include <vfs/node.h>
+#include <vfs/path.h>
 
 extern php_stream_wrapper em_vfs_wrapper;
 

@@ -309,6 +309,7 @@ static size_t
                     entry, child, &offsets[coffset], start);
             written += cwritten;
             coffset += cwritten;
+#ifdef __EMSCRIPTEN__
 #ifdef HAVE_EM_ZLIB
             if ((*entry)->flags & EM_VFS_MEMORY_COMPRESSED) {
                 if (((compression +=
@@ -320,6 +321,7 @@ static size_t
             if ((written % EM_VFS_YIELD_RECORDS) == 0) {
                 emscripten_sleep(EM_VFS_YIELD_DURATION);
             }
+#endif
         } ZEND_HASH_FOREACH_END();
     }
 

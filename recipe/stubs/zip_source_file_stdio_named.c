@@ -48,7 +48,7 @@
 #include <zip.h>
 #include <php.h>
 
-#include "vfs.h"
+#include <vfs/vfs.h>
 
 typedef struct zip_string zip_string_t;
 typedef struct zip_entry zip_entry_t;
