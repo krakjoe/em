@@ -595,12 +595,14 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
 
         if (entry->kind == EM_VFS_DIR) {
             if (em_vfs_mkdir(name)) {
+#ifdef __EMSCRIPTEN__
                 /**
                  * Yield to the browser so it can keep the ui snappy ...
                  */
                 if ((records % EM_VFS_YIELD_RECORDS) == 0) {
                     emscripten_sleep(EM_VFS_YIELD_DURATION);
                 }
+#endif
                 records++;
             }
         } else if (entry->kind == EM_VFS_FILE) {
