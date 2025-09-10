@@ -634,6 +634,7 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
                 if (em_vfs_put(name,
                         copy,
                         entry->size.data.verbatim)) {
+#ifdef __EMSCRIPTEN__
                     /**
                      * Yield to the browser so it can keep the ui snappy ...
                      */
@@ -641,6 +642,7 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
                             entry->size.data.compressed) % EM_VFS_YIELD_BYTES) == 0) {
                         emscripten_sleep(EM_VFS_YIELD_DURATION);
                     }
+#endif
                     records++;
                 }
 
@@ -652,12 +654,14 @@ size_t EMSCRIPTEN_KEEPALIVE em_vfs_memory_write(void *memory, size_t offset, siz
             if (em_vfs_put(name,
                     (const char*)data,
                     entry->size.data.verbatim)) {
+#ifdef __EMSCRIPTEN__
                 /**
                  * Yield to the browser so it can keep the ui snappy ...
                  */
                 if ((records % EM_VFS_YIELD_RECORDS) == 0) {
                     emscripten_sleep(EM_VFS_YIELD_DURATION);
                 }
+#endif
                 records++;
             }
         }
