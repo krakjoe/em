@@ -25,7 +25,7 @@ jobs:
     name: Test EM
     strategy:
       matrix:
-        php: ["PHP-8.0", "PHP-8.1", "PHP-8.2", "PHP-8.3", "PHP-8.4", "master"]
+        php: ["PHP-8.0", "PHP-8.1", "PHP-8.2", "PHP-8.3", "PHP-8.4", "PHP-8.5", "master"]
     steps:
       - name: Checkout em
         uses: actions/checkout@v4
