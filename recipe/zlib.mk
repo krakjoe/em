@@ -13,7 +13,7 @@
 ########################################################################
 # Author: krakjoe                                                      #
 ########################################################################
-EM_ZLIB_URL   = https://zlib.net/zlib-1.3.1.tar.gz
+EM_ZLIB_URL   = https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
 EM_ZLIB_TAR   = $(EM_RECIPE_OUT)/zlib-1.3.1.tar.gz
 EM_ZLIB_SRC   = $(EM_RECIPE_OUT)/zlib
 EM_ZLIB_LIB   = $(EM_ZLIB_SRC)/lib/libz.a
